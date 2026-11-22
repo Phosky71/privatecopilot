@@ -3,6 +3,7 @@ import os
 import shutil
 import threading
 import uuid
+from pathlib import Path
 from typing import Any
 
 WORKSPACES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "workspaces")
@@ -59,6 +60,56 @@ class WorkspaceService:
 
     def set_active_model_id(self, value):
         self.set_app_state({"active_model_id": value})
+
+    def open_workspace_by_path(self, folder_path: str, name: str | None = None) -> dict[str, Any]:
+        with self._lock:
+            resolved = Path(folder_path).resolve()
+            if not resolved.is_dir():
+                raise ValueError(f"Folder path does not exist or is not a directory: {folder_path}")
+
+            resolved_str = str(resolved)
+
+            for ws in self.get_workspaces():
+                folders = ws.get("folders", [])
+                if folders:
+                    try:
+                        if Path(folders[0]).resolve() == resolved:
+                            return ws
+                    except (OSError, ValueError):
+                        continue
+
+            if name and name.strip():
+                ws_name = name.strip()
+            else:
+                ws_name = resolved.name or str(resolved)
+
+            workspace_id = str(uuid.uuid4())
+            ws_dir = self._get_workspace_dir(workspace_id)
+            os.makedirs(ws_dir, exist_ok=True)
+
+            config = {
+                "id": workspace_id,
+                "name": ws_name,
+                "folders": [resolved_str],
+                "files": [],
+            }
+
+            with open(self._get_config_path(workspace_id), "w", encoding="utf-8") as f:
+                json.dump(config, f, indent=4)
+
+            return config
+
+    def get_git_init_policy(self) -> str:
+        policy = self.get_app_state().get("git_init_policy", "ask")
+        if policy not in {"ask", "auto", "never"}:
+            return "ask"
+        return policy
+
+    def set_git_init_policy(self, policy: str) -> str:
+        if policy not in {"ask", "auto", "never"}:
+            raise ValueError("Invalid git_init_policy")
+        self.set_app_state({"git_init_policy": policy})
+        return policy
 
     def create_workspace(self, name: str) -> dict[str, Any]:
         with self._lock:

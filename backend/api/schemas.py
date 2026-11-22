@@ -1,5 +1,11 @@
+from typing import Literal
+
 from pydantic import BaseModel
 
+
+class OpenWorkspaceRequest(BaseModel):
+    folder_path: str
+    name: str | None = None
 
 class CreateWorkspaceRequest(BaseModel):
     name: str
@@ -34,3 +40,10 @@ class GitApplyRequest(BaseModel):
     file_path: str
     original: str
     replacement: str
+    confirm_git_init: bool = False
+
+class GitConfigRequest(BaseModel):
+    git_init_policy: Literal["ask", "auto", "never"]
+
+class GitInitRequest(BaseModel):
+    workspace_id: str

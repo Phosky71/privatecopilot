@@ -7,6 +7,7 @@ from api.schemas import (
     AddFolderRequest,
     CreateWorkspaceRequest,
     FileRequest,
+    OpenWorkspaceRequest,
     RemoveFolderRequest,
     SwitchWorkspaceRequest,
     UpdateWorkspaceRequest,
@@ -39,6 +40,17 @@ def create_workspace(request: CreateWorkspaceRequest):
         if active_workspace_id is None:
             active_workspace_id = ws["id"]
             workspace_service.set_active_workspace_id(active_workspace_id)
+        return ws
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/open")
+def open_workspace(request: OpenWorkspaceRequest):
+    try:
+        ws = workspace_service.open_workspace_by_path(request.folder_path, request.name)
+        global active_workspace_id
+        active_workspace_id = ws["id"]
+        workspace_service.set_active_workspace_id(active_workspace_id)
         return ws
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(e))

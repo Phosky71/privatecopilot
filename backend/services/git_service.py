@@ -7,6 +7,14 @@ from core.logging_config import logger
 from services.workspace_service import workspace_service
 
 
+class GitInitRequiredError(Exception):
+    pass
+
+
+class GitInitDisabledError(Exception):
+    pass
+
+
 class GitService:
     def _get_repo_path(self, workspace_id: str) -> str:
         ws = workspace_service.get_workspace(workspace_id)
@@ -45,7 +53,15 @@ class GitService:
     def get_status(self, workspace_id: str):
         try:
             repo_path = self._get_repo_path(workspace_id)
-            self.init_repo_if_needed(repo_path)
+            git_dir = os.path.join(repo_path, ".git")
+            if not os.path.exists(git_dir):
+                return {
+                    "initialized": False,
+                    "branch": None,
+                    "pending_changes": [],
+                    "repo_path": repo_path,
+                }
+
             branch = self._run_cmd(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo_path)
             status_output = self._run_cmd(["git", "status", "--porcelain"], cwd=repo_path)
 
@@ -56,15 +72,16 @@ class GitService:
                         pending_changes.append(line.strip())
 
             return {
+                "initialized": True,
                 "branch": branch,
                 "pending_changes": pending_changes,
                 "repo_path": repo_path,
             }
         except Exception as e:  # noqa: BLE001
             logger.warning("Git status failed: %s", e)
-            return {"branch": "unknown", "pending_changes": [], "error": str(e)}
+            return {"initialized": False, "branch": None, "pending_changes": [], "error": str(e), "repo_path": repo_path}
 
-    def apply_edit_and_commit(self, workspace_id: str, file_path: str, original: str, replacement: str) -> str:
+    def apply_edit_and_commit(self, workspace_id: str, file_path: str, original: str, replacement: str, confirm_git_init: bool = False) -> str:
         repo_path = self._get_repo_path(workspace_id)
         repo_root = Path(repo_path).resolve()
 
@@ -78,6 +95,16 @@ class GitService:
             raise ValueError(f"File {file_path} is outside the repository bounds.")
 
         logger.info("[AI ACTION] type=edit workspace=%s file=%s status=approved", workspace_id, target_path)
+
+        git_dir = os.path.join(repo_path, ".git")
+        if not os.path.exists(git_dir):
+            policy = workspace_service.get_git_init_policy()
+            if policy == "never":
+                raise GitInitDisabledError("Git initialization is disabled by policy.")
+            if policy == "ask" and not confirm_git_init:
+                raise GitInitRequiredError("Git repository is not initialized in this workspace folder.")
+            # auto or confirmed ask
+            self.init_repo_if_needed(repo_path)
 
         if not target_path.exists():
             if original.strip() == "":
