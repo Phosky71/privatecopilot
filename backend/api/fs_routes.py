@@ -44,5 +44,7 @@ def list_fs(path: str = ""):
         # Sort directories first, then alphabetically
         items.sort(key=lambda x: (not x["is_dir"], x["name"].lower()))
         return {"path": path.replace("\\", "/"), "items": items}
+    except HTTPException:
+        raise
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(e))

@@ -32,6 +32,7 @@ def set_model(request: SetModelRequest):
             active_model_str = request.model_id
         else:
             active_model_str = llm_client.set_active_model(request.model_id)
+            workspace_service.set_active_model_id(request.model_id)
 
         return {
             "status": "ok",

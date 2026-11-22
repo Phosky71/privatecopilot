@@ -1,4 +1,5 @@
 import json
+import os
 from typing import Any
 
 import requests
@@ -8,9 +9,14 @@ from services.workspace_service import workspace_service
 
 
 class LLMClient:
-    def __init__(self, base_url: str = "http://localhost:11434"):
-        self.base_url = base_url
-        self.active_model_id = None
+    def __init__(self, base_url: str | None = None):
+        self.base_url = base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        try:
+            from services.workspace_service import workspace_service
+
+            self.active_model_id = workspace_service.get_active_model_id()
+        except Exception:  # noqa: BLE001
+            self.active_model_id = None
 
     def get_models_config(self) -> dict[str, Any]:
         try:
@@ -107,11 +113,11 @@ class LLMClient:
         
         prompt = self.build_prompt(workspace_id, query)
         
-        response = requests.post(f"{self.base_url}/api/generate", json={
-            "model": model,
-            "prompt": prompt,
-            "stream": False
-        })
+        response = requests.post(
+            f"{self.base_url}/api/generate",
+            json={"model": model, "prompt": prompt, "stream": False},
+            timeout=(5, 120),
+        )
         
         if response.status_code == 200:
             return response.json().get("response", "")
@@ -124,18 +130,29 @@ class LLMClient:
         
         prompt = self.build_prompt(workspace_id, query)
         
-        response = requests.post(f"{self.base_url}/api/generate", json={
-            "model": model,
-            "prompt": prompt,
-            "stream": True
-        }, stream=True)
-        
-        if response.status_code == 200:
+        try:
+            response = requests.post(
+                f"{self.base_url}/api/generate",
+                json={"model": model, "prompt": prompt, "stream": True},
+                stream=True,
+                timeout=(5, 120),
+            )
+        except requests.RequestException as e:
+            logger.error("Ollama stream connection failed: %s", e)
+            yield f"data: {json.dumps({'error': str(e), 'done': True})}\n\n"
+            return
+
+        if response.status_code != 200:
+            yield f"data: {json.dumps({'error': f'Ollama API Error: {response.text}', 'done': True})}\n\n"
+            return
+
+        try:
             for line in response.iter_lines():
                 if line:
                     data = json.loads(line)
                     yield f"data: {json.dumps({'response': data.get('response', ''), 'done': data.get('done', False)})}\n\n"
-        else:
-            yield f"data: {json.dumps({'error': f'Ollama API Error: {response.text}'})}\n\n"
+        except (requests.RequestException, ValueError) as e:
+            logger.error("Ollama stream failed: %s", e)
+            yield f"data: {json.dumps({'error': str(e), 'done': True})}\n\n"
 
 llm_client = LLMClient()

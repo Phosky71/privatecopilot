@@ -16,6 +16,21 @@ router = APIRouter()
 
 active_workspace_id = None
 
+
+def _restore_active_workspace():
+    global active_workspace_id
+    if active_workspace_id is not None:
+        return
+    persisted = workspace_service.get_active_workspace_id()
+    if not persisted:
+        return
+    try:
+        workspace_service.get_workspace(persisted)
+        active_workspace_id = persisted
+    except (ValueError, OSError):
+        workspace_service.set_active_workspace_id(None)
+
+
 @router.post("/create")
 def create_workspace(request: CreateWorkspaceRequest):
     try:
@@ -23,6 +38,7 @@ def create_workspace(request: CreateWorkspaceRequest):
         global active_workspace_id
         if active_workspace_id is None:
             active_workspace_id = ws["id"]
+            workspace_service.set_active_workspace_id(active_workspace_id)
         return ws
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(e))
@@ -45,18 +61,23 @@ def switch_workspace(request: SwitchWorkspaceRequest):
         ws = workspace_service.get_workspace(request.workspace_id)
         global active_workspace_id
         active_workspace_id = ws["id"]
+        workspace_service.set_active_workspace_id(active_workspace_id)
         return {"status": "success", "active_workspace": ws}
     except Exception:  # noqa: BLE001
         raise HTTPException(status_code=404, detail="Workspace not found")
 
 @router.get("/status")
 def get_status():
+    global active_workspace_id
+    _restore_active_workspace()
     if active_workspace_id:
         try:
             ws = workspace_service.get_workspace(active_workspace_id)
             return {"active_workspace": ws}
         except (ValueError, OSError, KeyError) as e:
             logger.debug("Active workspace lookup failed: %s", e)
+            active_workspace_id = None
+            workspace_service.set_active_workspace_id(None)
             return {"active_workspace": None}
     return {"active_workspace": None}
 
@@ -75,6 +96,7 @@ def delete_workspace(workspace_id: str):
         global active_workspace_id
         if active_workspace_id == workspace_id:
             active_workspace_id = None
+            workspace_service.set_active_workspace_id(None)
         return {"status": "success"}
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(e))

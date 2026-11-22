@@ -1,5 +1,6 @@
 import json
 import os
+import threading
 
 from core.embeddings import embedding_service
 from core.logging_config import logger
@@ -21,7 +22,7 @@ def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200) -> list[st
 
 class Indexer:
     def __init__(self):
-        pass
+        self._lock = threading.RLock()
 
     def _get_metadata_path(self, workspace_id: str) -> str:
         ws_dir = workspace_service._get_workspace_dir(workspace_id)
@@ -40,6 +41,10 @@ class Indexer:
             json.dump(metadata, f, indent=4)
 
     def index_workspace(self, workspace_id: str):
+        with self._lock:
+            return self._index_workspace(workspace_id)
+
+    def _index_workspace(self, workspace_id: str):
         workspace = workspace_service.get_workspace(workspace_id)
         folders = workspace.get("folders", [])
         files = workspace.get("files", [])

@@ -37,5 +37,31 @@ app.include_router(git_router, prefix="/git", tags=["Git"])
 def read_root():
     return {"message": "PrivateCopilot API is running"}
 
+
+@app.get("/health")
+def health():
+    import requests
+
+    ollama_ok = False
+    try:
+        res = requests.get(f"{os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')}/api/tags", timeout=2)
+        ollama_ok = res.status_code == 200
+    except Exception:  # noqa: BLE001
+        ollama_ok = False
+
+    deps = {}
+    for mod in ("chromadb", "sentence_transformers", "fastapi", "uvicorn"):
+        try:
+            __import__(mod)
+            deps[mod] = True
+        except Exception:  # noqa: BLE001
+            deps[mod] = False
+
+    return {
+        "status": "ok",
+        "ollama": ollama_ok,
+        "dependencies": deps,
+    }
+
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
