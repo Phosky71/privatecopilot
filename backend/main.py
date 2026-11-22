@@ -40,6 +40,7 @@ app.include_router(git_router, prefix="/git", tags=["Git"])
 @app.get("/health")
 def health():
     import requests
+    from core.providers import discover_models
 
     ollama_ok = False
     try:
@@ -56,9 +57,20 @@ def health():
         except Exception:  # noqa: BLE001
             deps[mod] = False
 
+    try:
+        models, status, _default = discover_models()
+    except Exception:  # noqa: BLE001
+        models, status = [], []
+
+    local_reachable = any(s.get("online") for s in status if s.get("base_url", "").find("127.0.0.1") >= 0 or "localhost" in s.get("base_url", ""))
+
     return {
         "status": "ok",
         "ollama": ollama_ok,
+        "ollama_reachable": ollama_ok,
+        "local_providers_reachable": local_reachable,
+        "available_models_count": len(models),
+        "providers": status,
         "dependencies": deps,
     }
 

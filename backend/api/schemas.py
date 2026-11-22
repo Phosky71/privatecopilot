@@ -53,3 +53,20 @@ class GitInitRequest(BaseModel):
 class ChatHistoryMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str
+
+class ProviderCreateRequest(BaseModel):
+    name: str
+    provider_type: Literal["ollama", "openai_compatible", "anthropic"]
+    base_url: str
+    api_key: str | None = None
+    models: list[str] = []
+    enabled: bool = True
+
+class ProviderUpdateRequest(BaseModel):
+    name: str | None = None
+    provider_type: Literal["ollama", "openai_compatible", "anthropic"] | None = None
+    base_url: str | None = None
+    api_key: str | None = None
+    models: list[str] | None = None
+    enabled: bool | None = None
+    clear_api_key: bool = False

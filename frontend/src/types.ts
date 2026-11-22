@@ -10,11 +10,44 @@ export interface ModelInfo {
   id: string;
   name: string;
   model: string;
+  provider_id?: string;
+  provider_name?: string;
+  provider_type?: string;
+  is_local?: boolean;
+}
+
+export interface ProviderStatus {
+  id: string;
+  name: string;
+  type: string;
+  base_url: string;
+  online: boolean;
+}
+
+export interface LLMProviderConfig {
+  id: string;
+  name: string;
+  provider_type: string;
+  base_url: string;
+  has_api_key: boolean;
+  api_key_masked: string | null;
+  models: string[];
+  enabled: boolean;
+}
+
+export interface ProviderFormPayload {
+  name: string;
+  provider_type: 'ollama' | 'openai_compatible' | 'anthropic';
+  base_url: string;
+  api_key?: string;
+  models: string[];
+  enabled: boolean;
 }
 
 export interface ModelsResponse {
   default: string | null;
   models: ModelInfo[];
+  providers_status?: ProviderStatus[];
 }
 
 export type GitInitPolicy = 'ask' | 'auto' | 'never';

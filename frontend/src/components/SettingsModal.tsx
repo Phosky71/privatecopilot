@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { type Workspace, type GitInitPolicy } from '../types';
+import { type Workspace, type GitInitPolicy, type ProviderStatus } from '../types';
 
 interface SettingsModalProps {
   activeWorkspace: Workspace | null;
   gitInitPolicy: GitInitPolicy;
+  providersStatus: ProviderStatus[];
   onClose: () => void;
   onUpdate: (name: string) => void;
   onDelete: () => void;
@@ -12,11 +13,12 @@ interface SettingsModalProps {
   onAddFile: () => void;
   onRemoveFile: (path: string) => void;
   onGitInitPolicyChange: (policy: GitInitPolicy) => void;
+  onRefreshModels: () => void;
 }
 
 export default function SettingsModal({ 
-  activeWorkspace, gitInitPolicy, onClose, onUpdate, onDelete, 
-  onAddFolder, onRemoveFolder, onAddFile, onRemoveFile, onGitInitPolicyChange 
+  activeWorkspace, gitInitPolicy, providersStatus, onClose, onUpdate, onDelete, 
+  onAddFolder, onRemoveFolder, onAddFile, onRemoveFile, onGitInitPolicyChange, onRefreshModels 
 }: SettingsModalProps) {
   
   const [name, setName] = useState(activeWorkspace?.name || '');
@@ -124,6 +126,29 @@ export default function SettingsModal({
 
           </>
           )}
+
+          {/* LLM Providers */}
+          <section>
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">LLM Providers (Local &amp; Cloud)</h3>
+            <div className="bg-gray-900 rounded-lg border border-gray-700 p-4 space-y-2">
+              {providersStatus.length === 0 ? (
+                <p className="text-sm text-gray-500">No providers detected.</p>
+              ) : (
+                providersStatus.map(p => (
+                  <div key={p.id} className="flex items-center justify-between text-xs">
+                    <span className="text-gray-300">{p.name} ({p.base_url})</span>
+                    <span className={p.online ? 'text-green-400' : 'text-red-400'}>{p.online ? 'online' : 'offline'}</span>
+                  </div>
+                ))
+              )}
+              <button
+                onClick={onRefreshModels}
+                className="mt-2 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded text-xs"
+              >
+                Refresh models
+              </button>
+            </div>
+          </section>
 
           {/* Git Initialization Policy */}
           <section>

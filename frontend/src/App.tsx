@@ -11,6 +11,7 @@ import {
   type GitRepoStatus,
   type GitInitPolicy,
   type IndexProgress,
+  type ProviderStatus,
 } from './types'
 
 function App() {
@@ -20,6 +21,7 @@ function App() {
   const [input, setInput] = useState('')
   const [isIndexing, setIsIndexing] = useState(false)
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([])
+  const [providersStatus, setProvidersStatus] = useState<ProviderStatus[]>([])
   const [selectedModelId, setSelectedModelId] = useState<string>('')
   const [showSettings, setShowSettings] = useState(false)
   const [browserMode, setBrowserMode] = useState<'open-workspace' | 'folder' | 'file' | null>(null)
@@ -105,6 +107,7 @@ function App() {
       }
       const data: ModelsResponse = await res.json()
       setAvailableModels(data.models || [])
+      setProvidersStatus(data.providers_status || [])
       if (activeWorkspace) {
         const wsModel = (data.models || []).find((m: ModelInfo) => m.model === activeWorkspace.model)
         if (wsModel) {
@@ -120,6 +123,10 @@ function App() {
       console.error(err)
     }
   }, [activeWorkspace])
+
+  const refreshModels = useCallback(async () => {
+    await fetchModels()
+  }, [fetchModels])
 
   const handleWorkspaceSwitch = useCallback(async (ws: Workspace) => {
     setActiveWorkspace(ws)
@@ -570,7 +577,7 @@ function App() {
             )}
           </div>
           <div className="flex items-center space-x-3">
-            {availableModels.length > 0 && (
+            {availableModels.length > 0 ? (
               <select
                 value={selectedModelId}
                 onChange={e => void handleModelChange(e)}
@@ -580,7 +587,16 @@ function App() {
                   <option key={m.id} value={m.id}>{m.name}</option>
                 ))}
               </select>
+            ) : (
+              <span className="text-xs text-yellow-400">No LLM models detected</span>
             )}
+            <button
+              onClick={() => void refreshModels()}
+              title="Refresh models"
+              className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-md text-sm"
+            >
+              ↻
+            </button>
             {activeWorkspace && (
               <button
                 onClick={() => void handleIndexWorkspace()}
@@ -676,6 +692,7 @@ function App() {
         <SettingsModal
           activeWorkspace={activeWorkspace}
           gitInitPolicy={gitInitPolicy}
+          providersStatus={providersStatus}
           onClose={() => setShowSettings(false)}
           onUpdate={name => { if (activeWorkspace) void handleUpdateWorkspaceName(name) }}
           onDelete={() => { if (activeWorkspace) void handleDeleteWorkspace() }}
@@ -684,6 +701,7 @@ function App() {
           onAddFile={() => { if (activeWorkspace) setBrowserMode('file') }}
           onRemoveFile={(path: string) => { if (activeWorkspace) void handleModifyWorkspaceList('remove-file', { workspace_id: activeWorkspace.id, file_path: path }) }}
           onGitInitPolicyChange={policy => void handleGitInitPolicyChange(policy)}
+          onRefreshModels={() => void refreshModels()}
         />
       )}
 

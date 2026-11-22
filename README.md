@@ -8,7 +8,7 @@ PrivateCopilot is a **local, single-user AI coding assistant**. It provides isol
 - **Indexing**: incremental indexing by file mtime, chunking (1000 chars, 200 overlap), embeddings stored in a per-workspace ChromaDB collection.
 - **Semantic search (RAG)**: top-k retrieval injected into the LLM prompt.
 - **Streaming chat**: Server-Sent Events from the FastAPI backend to the React frontend.
-- **Model selection**: list Ollama models, select per workspace or globally.
+- **Model selection**: auto-detects Ollama, LM Studio and llama.cpp; supports cloud providers (OpenAI, Anthropic, OpenRouter, Groq, DeepSeek, custom OpenAI-compatible) with API keys; unified selector with refresh.
 - **File browser**: browse the host filesystem to pick folders/files (intended for local use).
 - **HITL file editing**: assistant emits `<edit file="...">` blocks; the UI shows a diff and the user accepts/rejects. Accepted edits create a `feature/ai-edit-*` branch, apply the change (preserving CRLF/LF) and commit.
 - **Git status panel**: branch and pending changes for the first folder of the active workspace; `/git/status` is read-only and reports `initialized`.
