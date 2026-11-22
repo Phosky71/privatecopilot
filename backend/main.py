@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 import uvicorn
 from api.chat_routes import router as chat_router
@@ -8,8 +9,10 @@ from api.index_routes import router as index_router
 from api.model_routes import router as model_router
 from api.workspace_routes import router as workspace_router
 from core.logging_config import configure_logging
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 configure_logging()
 
@@ -32,10 +35,6 @@ app.include_router(index_router, prefix="/index", tags=["Index"])
 app.include_router(model_router, prefix="/model", tags=["Model"])
 app.include_router(fs_router, prefix="/fs", tags=["FileSystem"])
 app.include_router(git_router, prefix="/git", tags=["Git"])
-
-@app.get("/")
-def read_root():
-    return {"message": "PrivateCopilot API is running"}
 
 
 @app.get("/health")
@@ -62,6 +61,65 @@ def health():
         "ollama": ollama_ok,
         "dependencies": deps,
     }
+
+
+@app.get("/")
+def read_root():
+    dist_dir = _resolve_frontend_dist()
+    if dist_dir is not None:
+        index_html = dist_dir / "index.html"
+        if index_html.exists():
+            return FileResponse(index_html)
+    return {"message": "PrivateCopilot API is running"}
+
+
+API_PREFIXES = ("/workspace", "/chat", "/index", "/model", "/fs", "/git", "/health", "/docs", "/openapi.json", "/redoc")
+
+
+def _resolve_frontend_dist() -> Path | None:
+    if os.getenv("SERVE_FRONTEND", "true").lower() == "false":
+        return None
+
+    candidates = []
+    env_dir = os.getenv("FRONTEND_DIST_DIR")
+    if env_dir:
+        candidates.append(Path(env_dir))
+    repo_root = Path(__file__).resolve().parent.parent
+    candidates.append(repo_root / "frontend_dist")
+    candidates.append(repo_root / "frontend" / "dist")
+
+    for candidate in candidates:
+        try:
+            if (candidate / "index.html").is_file():
+                return candidate.resolve()
+        except OSError:
+            continue
+    return None
+
+
+_dist_dir = _resolve_frontend_dist()
+if _dist_dir is not None:
+    _assets = _dist_dir / "assets"
+    if _assets.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(_assets)), name="assets")
+
+    from fastapi.responses import RedirectResponse
+
+    @app.get("/{full_path:path}")
+    def spa_fallback(full_path: str):
+        if full_path == "":
+            return FileResponse(_dist_dir / "index.html")
+        first = "/" + full_path.split("/", 1)[0]
+        # Redirect bare API prefixes to their trailing-slash forms.
+        if first in API_PREFIXES and not full_path.endswith("/"):
+            return RedirectResponse(url=f"/{full_path}/", status_code=307)
+        if any(first == p or first.startswith(p + "/") for p in API_PREFIXES):
+            raise HTTPException(status_code=404, detail="Not Found")
+        target = (_dist_dir / full_path).resolve()
+        if target.is_file() and target.is_relative_to(_dist_dir):
+            return FileResponse(target)
+        return FileResponse(_dist_dir / "index.html")
+
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
