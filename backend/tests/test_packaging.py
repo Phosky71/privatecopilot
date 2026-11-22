@@ -51,8 +51,9 @@ def test_spa_serving(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 def test_build_dist(tmp_path: Path):
     out_dir = tmp_path / "out"
     script = Path(__file__).resolve().parents[2] / "scripts" / "build_dist.py"
-    # ensure frontend/dist exists
-    assert (Path(__file__).resolve().parents[2] / "frontend" / "dist" / "index.html").is_file()
+    frontend_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist" / "index.html"
+    if not frontend_dist.is_file():
+        pytest.skip("frontend/dist not built")
 
     subprocess.run(
         [sys.executable, str(script), "--target", "all", "--skip-frontend-build", "--version", "9.9.9", "--output-dir", str(out_dir)],

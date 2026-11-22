@@ -46,7 +46,7 @@ class GitService:
             self._run_cmd(["git", "init"], cwd=repo_path)
             self._run_cmd(["git", "add", "."], cwd=repo_path)
             try:
-                self._run_cmd(["git", "commit", "-m", "Initial commit"], cwd=repo_path)
+                self._run_cmd(["git", "-c", "user.email=privatecopilot@local", "-c", "user.name=PrivateCopilot", "commit", "-m", "Initial commit"], cwd=repo_path)
             except RuntimeError as e:
                 logger.warning("Initial commit skipped: %s", e)
 
@@ -210,11 +210,13 @@ class GitService:
         if not target_path.exists():
             if original.strip() == "":
                 target_path.parent.mkdir(parents=True, exist_ok=True)
-                target_path.write_text(replacement, encoding="utf-8", newline="")
+                with open(target_path, "w", encoding="utf-8", newline="") as f:
+                    f.write(replacement)
             else:
                 raise FileNotFoundError(f"File {file_path} not found.")
         else:
-            content = target_path.read_text(encoding="utf-8", newline="")
+            with open(target_path, "r", encoding="utf-8", newline="") as f:
+                content = f.read()
             if original.strip():
                 # Detect original line ending style.
                 line_ending = "\r\n" if "\r\n" in content else "\n"
@@ -228,9 +230,11 @@ class GitService:
                 new_content = norm_content.replace(norm_orig, norm_repl, 1)
                 if line_ending == "\r\n":
                     new_content = new_content.replace("\n", "\r\n")
-                target_path.write_text(new_content, encoding="utf-8", newline="")
+                with open(target_path, "w", encoding="utf-8", newline="") as f:
+                    f.write(new_content)
             else:
-                target_path.write_text(replacement, encoding="utf-8", newline="")
+                with open(target_path, "w", encoding="utf-8", newline="") as f:
+                    f.write(replacement)
 
         logger.info("[AI ACTION] type=git workspace=%s file=%s status=pending", workspace_id, target_path)
 
@@ -248,7 +252,7 @@ class GitService:
             self._run_cmd(["git", "add", str(target_path)], cwd=repo_path)
 
             filename = target_path.name
-            self._run_cmd(["git", "commit", "-m", f"feat(ai): Updated {filename}"], cwd=repo_path)
+            self._run_cmd(["git", "-c", "user.email=privatecopilot@local", "-c", "user.name=PrivateCopilot", "commit", "-m", f"feat(ai): Updated {filename}"], cwd=repo_path)
 
             logger.info("[AI ACTION] type=git workspace=%s file=%s status=approved", workspace_id, target_path)
             return branch_name, repo_path
