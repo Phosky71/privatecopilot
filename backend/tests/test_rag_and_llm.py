@@ -131,7 +131,7 @@ def test_llm_generate_stream_error(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(requests, "post", lambda *a, **k: FakeResponse())
 
     client = llm_mod.LLMClient(base_url="http://localhost:11434")
-    monkeypatch.setattr(client, "build_prompt", lambda _ws, _q: "prompt")
+    monkeypatch.setattr(client, "build_messages", lambda _ws, _q, history=None: [{"role": "user", "content": "prompt"}])
     monkeypatch.setattr(client, "resolve_model", lambda _ws: "m")
 
     events = list(client.generate_stream("ws", "q"))
@@ -148,7 +148,7 @@ def test_llm_generate_stream_connection_error(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(requests, "post", raise_conn)
 
     client = llm_mod.LLMClient(base_url="http://localhost:11434")
-    monkeypatch.setattr(client, "build_prompt", lambda _ws, _q: "prompt")
+    monkeypatch.setattr(client, "build_messages", lambda _ws, _q, history=None: [{"role": "user", "content": "prompt"}])
     monkeypatch.setattr(client, "resolve_model", lambda _ws: "m")
 
     events = list(client.generate_stream("ws", "q"))

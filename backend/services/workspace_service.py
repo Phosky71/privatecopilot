@@ -24,6 +24,9 @@ class WorkspaceService:
     def _get_state_path(self) -> str:
         return os.path.join(WORKSPACES_DIR, ".app_state.json")
 
+    def _get_chat_history_path(self, workspace_id: str) -> str:
+        return os.path.join(self._get_workspace_dir(workspace_id), "chat_history.json")
+
     def _load_state(self) -> dict[str, Any]:
         path = self._get_state_path()
         if os.path.exists(path):
@@ -110,6 +113,37 @@ class WorkspaceService:
             raise ValueError("Invalid git_init_policy")
         self.set_app_state({"git_init_policy": policy})
         return policy
+
+    def get_chat_history(self, workspace_id: str) -> list[dict[str, str]]:
+        with self._lock:
+            self.get_workspace(workspace_id)  # validate existence
+            path = self._get_chat_history_path(workspace_id)
+            if os.path.exists(path):
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        if isinstance(data, list):
+                            return data
+                except (OSError, json.JSONDecodeError):
+                    return []
+            return []
+
+    def append_chat_turn(self, workspace_id: str, user_message: str, assistant_message: str):
+        with self._lock:
+            self.get_workspace(workspace_id)
+            history = self.get_chat_history(workspace_id)
+            history.append({"role": "user", "content": user_message})
+            history.append({"role": "assistant", "content": assistant_message})
+            path = self._get_chat_history_path(workspace_id)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(history, f, indent=2, ensure_ascii=False)
+
+    def clear_chat_history(self, workspace_id: str):
+        with self._lock:
+            self.get_workspace(workspace_id)
+            path = self._get_chat_history_path(workspace_id)
+            if os.path.exists(path):
+                os.remove(path)
 
     def create_workspace(self, name: str) -> dict[str, Any]:
         with self._lock:

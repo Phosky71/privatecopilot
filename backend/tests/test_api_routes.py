@@ -126,7 +126,7 @@ def test_chat_stream(client: TestClient, monkeypatch: pytest.MonkeyPatch):
     # Mock llm_client.generate_stream
     import core.llm as llm_mod
 
-    def fake_stream(_ws, _q):
+    def fake_stream(_ws, _q, history=None):
         yield "data: {\"response\": \"hi\", \"done\": false}\n\n"
         yield "data: {\"response\": \"\", \"done\": true}\n\n"
 

@@ -62,14 +62,14 @@ def test_normal_edit(repo: Path):
     )
 
     svc = GitService()
-    branch = svc.apply_edit_and_commit("ws", "a.txt", "foo", "baz")
+    branch, _ = svc.apply_edit_and_commit("ws", "a.txt", "foo", "baz")
     assert branch.startswith("feature/ai-edit-")
     assert f.read_text(encoding="utf-8") == "baz bar\n"
 
 
 def test_create_new_file(repo: Path):
     svc = GitService()
-    branch = svc.apply_edit_and_commit("ws", "new.txt", "", "content\n")
+    branch, _ = svc.apply_edit_and_commit("ws", "new.txt", "", "content\n")
     assert branch.startswith("feature/ai-edit-")
     assert (repo / "new.txt").read_text(encoding="utf-8") == "content\n"
 
@@ -126,7 +126,7 @@ def test_no_branch_collision_same_second(repo: Path, monkeypatch: pytest.MonkeyP
     )
 
     svc = GitService()
-    b1 = svc.apply_edit_and_commit("ws", "x.txt", "a", "b")
+    b1, _ = svc.apply_edit_and_commit("ws", "x.txt", "a", "b")
     # Reset working tree to allow second edit on same file
     subprocess.run(["git", "checkout", "main" if False else "master"], cwd=repo, capture_output=True, check=False)
     # Instead, create another file to avoid checkout issues
@@ -139,5 +139,5 @@ def test_no_branch_collision_same_second(repo: Path, monkeypatch: pytest.MonkeyP
         check=True,
         capture_output=True,
     )
-    b2 = svc.apply_edit_and_commit("ws", "y.txt", "a", "b")
+    b2, _ = svc.apply_edit_and_commit("ws", "y.txt", "a", "b")
     assert b1 != b2

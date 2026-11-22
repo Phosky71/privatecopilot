@@ -81,18 +81,93 @@ class GitService:
             logger.warning("Git status failed: %s", e)
             return {"initialized": False, "branch": None, "pending_changes": [], "error": str(e), "repo_path": repo_path}
 
-    def apply_edit_and_commit(self, workspace_id: str, file_path: str, original: str, replacement: str, confirm_git_init: bool = False) -> str:
-        repo_path = self._get_repo_path(workspace_id)
-        repo_root = Path(repo_path).resolve()
+    def _get_workspace_repos(self, workspace_id: str) -> list[Path]:
+        ws = workspace_service.get_workspace(workspace_id)
+        roots: list[Path] = []
+        for folder in ws.get("folders", []):
+            if not os.path.exists(folder):
+                continue
+            p = Path(folder).resolve()
+            # Remove any existing root that is inside p.
+            roots = [r for r in roots if not r.is_relative_to(p)]
+            if p not in roots and not any(p.is_relative_to(r) for r in roots):
+                roots.append(p)
+        return roots
+
+    def init_repo(self, workspace_id: str, repo_path: str | None = None) -> str:
+        roots = self._get_workspace_repos(workspace_id)
+        target_root: Path | None = None
+        if repo_path:
+            rp = Path(repo_path).resolve()
+            if rp in roots:
+                target_root = rp
+        if target_root is None and roots:
+            target_root = roots[0]
+        if target_root is None:
+            raise ValueError("Workspace has no repository roots.")
+        policy = workspace_service.get_git_init_policy()
+        if policy == "never":
+            raise GitInitDisabledError("Git initialization is disabled by policy.")
+        self.init_repo_if_needed(str(target_root))
+        return str(target_root)
+
+    def _resolve_target(self, workspace_id: str, file_path: str, original: str, repo_path: str | None = None):
+        ws = workspace_service.get_workspace(workspace_id)
+        folders = [Path(f).resolve() for f in ws.get("folders", []) if os.path.exists(f)]
+        files = [Path(f).resolve() for f in ws.get("files", []) if os.path.exists(f)]
+        allowed = folders + files
+        roots = self._get_workspace_repos(workspace_id)
 
         target = Path(file_path)
-        if target.is_absolute():
+        if repo_path:
+            rp = Path(repo_path).resolve()
+            if rp not in roots:
+                raise ValueError("repo_path is not a valid repository root for this workspace.")
+            target_repo = rp
+            if target.is_absolute():
+                target_path = target.resolve()
+            else:
+                target_path = (target_repo / target).resolve()
+        elif target.is_absolute():
             target_path = target.resolve()
+            containing = [r for r in roots if target_path.is_relative_to(r)]
+            if not containing:
+                raise ValueError(f"File {file_path} is outside the repository bounds.")
+            target_repo = max(containing, key=lambda r: len(str(r)))
         else:
-            target_path = (repo_root / target).resolve()
+            direct = [r for r in roots if (r / target).exists()]
+            if len(direct) == 1:
+                target_repo = direct[0]
+                target_path = (target_repo / target).resolve()
+            elif len(direct) > 1:
+                raise ValueError("Ambiguous repository for file_path; specify repo_path.")
+            else:
+                parts = target.parts
+                prefix_candidates = [r for r in roots if parts and r.name == parts[0]] if parts else []
+                if len(prefix_candidates) == 1 and len(parts) > 1:
+                    target_repo = prefix_candidates[0]
+                    target_path = (target_repo / Path(*parts[1:])).resolve()
+                elif len(prefix_candidates) > 1:
+                    raise ValueError("Ambiguous repository for file_path; specify repo_path.")
+                else:
+                    if original.strip() == "" and len(roots) == 1:
+                        target_repo = roots[0]
+                        target_path = (target_repo / target).resolve()
+                    else:
+                        raise ValueError("Ambiguous repository for file_path; specify repo_path.")
 
-        if not target_path.is_relative_to(repo_root):
+        # Security: target must be within an allowed workspace path.
+        if not any(target_path == a or target_path.is_relative_to(a) for a in allowed):
             raise ValueError(f"File {file_path} is outside the repository bounds.")
+
+        if target_repo not in roots:
+            raise ValueError(f"File {file_path} is outside the repository bounds.")
+
+        return target_repo, target_path
+
+    def apply_edit_and_commit(self, workspace_id: str, file_path: str, original: str, replacement: str, confirm_git_init: bool = False, repo_path: str | None = None) -> tuple[str, str]:
+        target_repo, target_path = self._resolve_target(workspace_id, file_path, original, repo_path)
+        repo_path = str(target_repo)
 
         logger.info("[AI ACTION] type=edit workspace=%s file=%s status=approved", workspace_id, target_path)
 
@@ -150,7 +225,7 @@ class GitService:
             self._run_cmd(["git", "commit", "-m", f"feat(ai): Updated {filename}"], cwd=repo_path)
 
             logger.info("[AI ACTION] type=git workspace=%s file=%s status=approved", workspace_id, target_path)
-            return branch_name
+            return branch_name, repo_path
         except Exception as e:
             logger.error("[AI ACTION] type=git workspace=%s file=%s status=rejected", workspace_id, target_path)
             logger.error("Failed to commit: %s", e)

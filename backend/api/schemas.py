@@ -41,9 +41,15 @@ class GitApplyRequest(BaseModel):
     original: str
     replacement: str
     confirm_git_init: bool = False
+    repo_path: str | None = None
 
 class GitConfigRequest(BaseModel):
     git_init_policy: Literal["ask", "auto", "never"]
 
 class GitInitRequest(BaseModel):
     workspace_id: str
+    repo_path: str | None = None
+
+class ChatHistoryMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str

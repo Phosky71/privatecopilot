@@ -75,17 +75,28 @@ class LLMClient:
         model, _ = self.resolve_model_details(workspace_id)
         return model
 
-    def build_prompt(self, workspace_id: str, query: str) -> str:
-        results = rag_service.search(workspace_id, query, top_k=5)
-        
+    def build_messages(self, workspace_id: str, query: str, history: list[dict[str, str]] | None = None) -> list[dict[str, str]]:
+        # Improve RAG query for short follow-ups using last user question.
+        search_query = query
+        if history:
+            last_user = None
+            for msg in reversed(history):
+                if msg.get("role") == "user":
+                    last_user = msg.get("content", "")
+                    break
+            if last_user and len(query.strip()) < 80:
+                search_query = f"{last_user}\n{query}"
+
+        results = rag_service.search(workspace_id, search_query, top_k=5)
+
         context_parts = []
         for r in results:
             source = r['metadata'].get('source', 'Unknown')
             content = r['document']
             context_parts.append(f"--- File: {source} ---\n{content}")
-            
+
         context_str = "\n\n".join(context_parts)
-        
+
         system_prompt = (
             "You are a local AI coding assistant. You have access to the user's workspace files. "
             "Use the provided context to answer the user's questions about their codebase. "
@@ -100,40 +111,67 @@ class LLMClient:
             "</edit>\n"
             "Do not use markdown code blocks for file edits. Only use the <edit> tags."
         )
-        
-        prompt = f"{system_prompt}\n\nContext:\n{context_str}\n\nUser Question:\n{query}"
-        return prompt
+
+        messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
+
+        # Bounded history window.
+        if history:
+            trimmed: list[dict[str, str]] = []
+            total_chars = 0
+            for msg in reversed(history):
+                role = msg.get("role")
+                content = msg.get("content", "")
+                if role not in ("user", "assistant"):
+                    continue
+                if total_chars + len(content) > 12000:
+                    break
+                trimmed.insert(0, {"role": role, "content": content})
+                total_chars += len(content)
+                if len(trimmed) >= 12:
+                    break
+
+            messages.extend(trimmed)
+
+        user_content = query
+        if context_str:
+            user_content = f"Context:\n{context_str}\n\nUser Question:\n{query}"
+
+        messages.append({"role": "user", "content": user_content})
+        return messages
 
     def _log_request(self, workspace_id: str, model_name: str):
         logger.info("LLM request: workspace=%s selected_model=%s", workspace_id, model_name)
 
-    def generate(self, workspace_id: str, query: str) -> str:
+    def generate(self, workspace_id: str, query: str, history: list[dict[str, str]] | None = None) -> str:
         model = self.resolve_model(workspace_id)
         self._log_request(workspace_id, model)
-        
-        prompt = self.build_prompt(workspace_id, query)
-        
+
+        messages = self.build_messages(workspace_id, query, history)
+
         response = requests.post(
-            f"{self.base_url}/api/generate",
-            json={"model": model, "prompt": prompt, "stream": False},
+            f"{self.base_url}/api/chat",
+            json={"model": model, "messages": messages, "stream": False},
             timeout=(5, 120),
         )
-        
+
         if response.status_code == 200:
-            return response.json().get("response", "")
+            data = response.json()
+            if "message" in data:
+                return data["message"].get("content", "")
+            return data.get("response", "")
         else:
             raise RuntimeError(f"Ollama API Error: {response.text}")
 
-    def generate_stream(self, workspace_id: str, query: str):
+    def generate_stream(self, workspace_id: str, query: str, history: list[dict[str, str]] | None = None):
         model = self.resolve_model(workspace_id)
         self._log_request(workspace_id, model)
-        
-        prompt = self.build_prompt(workspace_id, query)
-        
+
+        messages = self.build_messages(workspace_id, query, history)
+
         try:
             response = requests.post(
-                f"{self.base_url}/api/generate",
-                json={"model": model, "prompt": prompt, "stream": True},
+                f"{self.base_url}/api/chat",
+                json={"model": model, "messages": messages, "stream": True},
                 stream=True,
                 timeout=(5, 120),
             )
@@ -150,7 +188,13 @@ class LLMClient:
             for line in response.iter_lines():
                 if line:
                     data = json.loads(line)
-                    yield f"data: {json.dumps({'response': data.get('response', ''), 'done': data.get('done', False)})}\n\n"
+                    content = ""
+                    if isinstance(data.get("message"), dict):
+                        content = data["message"].get("content", "")
+                    if not content:
+                        content = data.get("response", "")
+                    done_flag = bool(data.get("done", False))
+                    yield f"data: {json.dumps({'response': content, 'done': done_flag})}\n\n"
         except (requests.RequestException, ValueError) as e:
             logger.error("Ollama stream failed: %s", e)
             yield f"data: {json.dumps({'error': str(e), 'done': True})}\n\n"

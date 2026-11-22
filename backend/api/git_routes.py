@@ -39,24 +39,26 @@ def init_git(request: GitInitRequest):
     if policy == "never":
         raise HTTPException(status_code=400, detail="Git initialization is disabled by policy.")
     try:
-        repo_path = git_service._get_repo_path(request.workspace_id)
+        git_service.init_repo(request.workspace_id, request.repo_path)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    git_service.init_repo_if_needed(repo_path)
+    except GitInitDisabledError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return git_service.get_status(request.workspace_id)
 
 
 @router.post("/apply")
 def apply_git_edit(request: GitApplyRequest):
     try:
-        branch = git_service.apply_edit_and_commit(
+        branch, repo_path = git_service.apply_edit_and_commit(
             request.workspace_id,
             request.file_path,
             request.original,
             request.replacement,
             confirm_git_init=request.confirm_git_init,
+            repo_path=request.repo_path,
         )
-        return {"status": "success", "branch": branch}
+        return {"status": "success", "branch": branch, "repo_path": repo_path}
     except GitInitRequiredError as e:
         return JSONResponse(
             status_code=409,
