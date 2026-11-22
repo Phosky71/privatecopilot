@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { type Workspace } from '../types';
+import { type Workspace, type GitInitPolicy } from '../types';
 
 interface SettingsModalProps {
-  activeWorkspace: Workspace;
+  activeWorkspace: Workspace | null;
+  gitInitPolicy: GitInitPolicy;
   onClose: () => void;
   onUpdate: (name: string) => void;
   onDelete: () => void;
@@ -10,11 +11,12 @@ interface SettingsModalProps {
   onRemoveFolder: (path: string) => void;
   onAddFile: () => void;
   onRemoveFile: (path: string) => void;
+  onGitInitPolicyChange: (policy: GitInitPolicy) => void;
 }
 
 export default function SettingsModal({ 
-  activeWorkspace, onClose, onUpdate, onDelete, 
-  onAddFolder, onRemoveFolder, onAddFile, onRemoveFile 
+  activeWorkspace, gitInitPolicy, onClose, onUpdate, onDelete, 
+  onAddFolder, onRemoveFolder, onAddFile, onRemoveFile, onGitInitPolicyChange 
 }: SettingsModalProps) {
   
   const [name, setName] = useState(activeWorkspace?.name || '');
@@ -36,7 +38,9 @@ export default function SettingsModal({
         </div>
         
         <div className="p-6 overflow-y-auto flex-1 space-y-8">
-          
+
+          {activeWorkspace && (
+            <>
           {/* General Settings */}
           <section>
             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">General</h3>
@@ -118,6 +122,27 @@ export default function SettingsModal({
             </div>
           </section>
 
+          </>
+          )}
+
+          {/* Git Initialization Policy */}
+          <section>
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Git Initialization Policy</h3>
+            <div className="bg-gray-900 rounded-lg border border-gray-700 p-4">
+              <select
+                value={gitInitPolicy}
+                onChange={e => onGitInitPolicyChange(e.target.value as GitInitPolicy)}
+                className="w-full bg-gray-800 text-sm text-gray-200 border border-gray-700 rounded-md px-3 py-2 focus:outline-none focus:border-blue-500"
+              >
+                <option value="ask">Ask before initializing Git (Recommended)</option>
+                <option value="auto">Auto-initialize Git without asking</option>
+                <option value="never">Never initialize Git (require existing repository)</option>
+              </select>
+            </div>
+          </section>
+
+          {activeWorkspace && (
+            <>
           {/* Danger Zone */}
           <section className="pt-6 border-t border-gray-700">
             <h3 className="text-xs font-bold text-red-500 uppercase tracking-wider mb-4">Danger Zone</h3>
@@ -138,6 +163,8 @@ export default function SettingsModal({
               </button>
             </div>
           </section>
+            </>
+          )}
 
         </div>
       </div>

@@ -17,8 +17,11 @@ export interface ModelsResponse {
   models: ModelInfo[];
 }
 
+export type GitInitPolicy = 'ask' | 'auto' | 'never';
+
 export interface GitStatus {
-  branch: string;
+  initialized?: boolean;
+  branch: string | null;
   pending_changes: string[];
   repo_path?: string;
   error?: string;

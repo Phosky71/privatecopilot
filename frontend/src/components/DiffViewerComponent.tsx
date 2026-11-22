@@ -12,8 +12,9 @@ interface DiffViewerProps {
 export default function DiffViewerComponent({ workspaceId, file, original, replacement, API_URL }: DiffViewerProps) {
   const [status, setStatus] = useState<'pending' | 'applied' | 'rejected'>('pending');
   const [error, setError] = useState<string | null>(null);
+  const [confirmingInit, setConfirmingInit] = useState(false);
 
-  const handleApply = async () => {
+  const handleApply = async (confirmGitInit = false) => {
     try {
       const res = await fetch(`${API_URL}/git/apply`, {
         method: 'POST',
@@ -22,11 +23,17 @@ export default function DiffViewerComponent({ workspaceId, file, original, repla
           workspace_id: workspaceId,
           file_path: file,
           original: original,
-          replacement: replacement
+          replacement: replacement,
+          confirm_git_init: confirmGitInit
         })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Failed to apply edit");
+      if (res.status === 409 && (data.code === 'GIT_INIT_REQUIRED' || data.detail?.code === 'GIT_INIT_REQUIRED')) {
+        setConfirmingInit(true);
+        return;
+      }
+      if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Failed to apply edit');
+      setConfirmingInit(false);
       setStatus('applied');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
@@ -39,18 +46,38 @@ export default function DiffViewerComponent({ workspaceId, file, original, repla
         <span className="font-mono text-sm text-gray-300">📝 {file}</span>
         {status === 'pending' && (
           <div className="space-x-3">
-            <button 
-              onClick={() => setStatus('rejected')} 
-              className="px-4 py-1.5 bg-gray-700 hover:bg-red-600/80 text-gray-200 hover:text-white rounded text-xs font-semibold tracking-wide transition-all"
-            >
-              Reject
-            </button>
-            <button 
-              onClick={handleApply} 
-              className="px-4 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded text-xs font-bold tracking-wide shadow-sm transition-all"
-            >
-              Accept & Commit ✓
-            </button>
+            {confirmingInit ? (
+              <>
+                <span className="text-xs text-yellow-400 mr-2">This folder is not a Git repository.</span>
+                <button
+                  onClick={() => void handleApply(true)}
+                  className="px-4 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded text-xs font-bold tracking-wide shadow-sm transition-all"
+                >
+                  Initialize Git & Apply
+                </button>
+                <button
+                  onClick={() => setConfirmingInit(false)}
+                  className="px-4 py-1.5 bg-gray-700 hover:bg-red-600/80 text-gray-200 hover:text-white rounded text-xs font-semibold tracking-wide transition-all"
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => setStatus('rejected')}
+                  className="px-4 py-1.5 bg-gray-700 hover:bg-red-600/80 text-gray-200 hover:text-white rounded text-xs font-semibold tracking-wide transition-all"
+                >
+                  Reject
+                </button>
+                <button
+                  onClick={() => void handleApply(false)}
+                  className="px-4 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded text-xs font-bold tracking-wide shadow-sm transition-all"
+                >
+                  Accept & Commit ✓
+                </button>
+              </>
+            )}
           </div>
         )}
         {status === 'applied' && <span className="px-3 py-1 bg-green-900/30 text-green-400 border border-green-800 rounded-md text-xs font-bold tracking-wider">APPLIED ✓</span>}

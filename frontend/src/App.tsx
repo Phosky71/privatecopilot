@@ -8,6 +8,7 @@ import {
   type ModelInfo,
   type ModelsResponse,
   type GitStatus,
+  type GitInitPolicy,
 } from './types'
 
 function App() {
@@ -19,8 +20,9 @@ function App() {
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([])
   const [selectedModelId, setSelectedModelId] = useState<string>('')
   const [showSettings, setShowSettings] = useState(false)
-  const [browserMode, setBrowserMode] = useState<'folder' | 'file' | null>(null)
+  const [browserMode, setBrowserMode] = useState<'open-workspace' | 'folder' | 'file' | null>(null)
   const [gitStatus, setGitStatus] = useState<GitStatus | null>(null)
+  const [gitInitPolicy, setGitInitPolicy] = useState<GitInitPolicy>('ask')
 
   const fetchGitStatus = useCallback(async () => {
     if (!activeWorkspace) return
@@ -36,6 +38,59 @@ function App() {
       console.error(err)
     }
   }, [activeWorkspace])
+
+  const fetchGitConfig = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/git/config`)
+      if (!res.ok) return
+      const data = await res.json()
+      if (data.git_init_policy) {
+        setGitInitPolicy(data.git_init_policy as GitInitPolicy)
+      }
+    } catch (err: unknown) {
+      console.error(err)
+    }
+  }, [])
+
+  const handleGitInitPolicyChange = async (policy: GitInitPolicy) => {
+    try {
+      const res = await fetch(`${API_URL}/git/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ git_init_policy: policy }),
+      })
+      if (!res.ok) {
+        console.error('Failed to update git config', res.status)
+        return
+      }
+      const data = await res.json()
+      setGitInitPolicy(data.git_init_policy as GitInitPolicy)
+      await fetchGitStatus()
+    } catch (err: unknown) {
+      console.error(err)
+    }
+  }
+
+  const handleInitializeGit = async () => {
+    if (!activeWorkspace) return
+    if (gitInitPolicy === 'ask' && !confirm('Initialize a Git repository in this folder?')) {
+      return
+    }
+    try {
+      const res = await fetch(`${API_URL}/git/init`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspace_id: activeWorkspace.id }),
+      })
+      if (!res.ok) {
+        console.error('Failed to initialize git', res.status)
+        return
+      }
+      await fetchGitStatus()
+    } catch (err: unknown) {
+      console.error(err)
+    }
+  }
 
   const fetchModels = useCallback(async () => {
     try {
@@ -125,33 +180,31 @@ function App() {
     ;(async () => {
       await Promise.resolve()
       if (cancelled) return
+      await fetchGitConfig()
       await fetchWorkspaces()
       await fetchModels()
     })()
     return () => {
       cancelled = true
     }
-  }, [fetchWorkspaces, fetchModels])
+  }, [fetchGitConfig, fetchWorkspaces, fetchModels])
 
-  const handleCreateWorkspace = async () => {
-    const name = prompt('Enter workspace name:')
-    if (name) {
-      try {
-        const res = await fetch(`${API_URL}/workspace/create`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name }),
-        })
-        if (!res.ok) {
-          console.error('Failed to create workspace', res.status)
-          return
-        }
-        const ws: Workspace = await res.json()
-        await fetchWorkspaces()
-        await handleWorkspaceSwitch(ws)
-      } catch (err: unknown) {
-        console.error(err)
+  const handleOpenWorkspace = async (folderPath: string) => {
+    try {
+      const res = await fetch(`${API_URL}/workspace/open`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder_path: folderPath }),
+      })
+      if (!res.ok) {
+        console.error('Failed to open workspace', res.status)
+        return
       }
+      const ws: Workspace = await res.json()
+      await fetchWorkspaces()
+      await handleWorkspaceSwitch(ws)
+    } catch (err: unknown) {
+      console.error(err)
     }
   }
 
@@ -386,19 +439,35 @@ function App() {
           <h2 className="text-xs uppercase text-gray-400 font-semibold mb-3">Git Status</h2>
           {gitStatus ? (
             <div className="space-y-2 text-sm bg-gray-900 p-3 rounded-md border border-gray-700">
-              <div className="flex items-center gap-2 text-blue-400">
-                <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
-                </svg>
-                <span className="font-mono text-xs font-bold truncate">{gitStatus.branch || 'N/A'}</span>
-              </div>
-              <div className="text-gray-400 text-xs mt-2">
-                Pending Changes: {gitStatus.pending_changes?.length || 0}
-              </div>
-              {gitStatus.pending_changes && gitStatus.pending_changes.length > 0 && (
-                <ul className="text-xs font-mono text-yellow-400 mt-1 max-h-24 overflow-y-auto">
-                  {gitStatus.pending_changes.map((c: string, i: number) => <li key={i} className="truncate">{c}</li>)}
-                </ul>
+              {gitStatus.initialized === false ? (
+                <>
+                  <div className="text-gray-400 text-xs">Not a Git repository</div>
+                  {gitInitPolicy !== 'never' && (
+                    <button
+                      onClick={() => void handleInitializeGit()}
+                      className="mt-2 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-medium"
+                    >
+                      Initialize Git
+                    </button>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 text-blue-400">
+                    <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
+                    </svg>
+                    <span className="font-mono text-xs font-bold truncate">{gitStatus.branch || 'N/A'}</span>
+                  </div>
+                  <div className="text-gray-400 text-xs mt-2">
+                    Pending Changes: {gitStatus.pending_changes?.length || 0}
+                  </div>
+                  {gitStatus.pending_changes && gitStatus.pending_changes.length > 0 && (
+                    <ul className="text-xs font-mono text-yellow-400 mt-1 max-h-24 overflow-y-auto">
+                      {gitStatus.pending_changes.map((c: string, i: number) => <li key={i} className="truncate">{c}</li>)}
+                    </ul>
+                  )}
+                </>
               )}
             </div>
           ) : (
@@ -407,18 +476,23 @@ function App() {
         </div>
 
         <button
-          onClick={() => void handleCreateWorkspace()}
+          onClick={() => setBrowserMode('open-workspace')}
           className="mt-4 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors flex items-center justify-center font-medium shadow-sm"
         >
-          <span className="mr-2">+</span> New Workspace
+          <span className="mr-2">+</span> Open Workspace Folder
         </button>
       </div>
 
       <div className="flex-1 flex flex-col relative">
         <div className="h-16 border-b border-gray-800 flex items-center justify-between px-6 bg-gray-900 z-10 shadow-sm">
-          <h2 className="text-lg font-semibold text-gray-200">
-            {activeWorkspace ? activeWorkspace.name : 'Select a workspace'}
-          </h2>
+          <div>
+            <h2 className="text-lg font-semibold text-gray-200">
+              {activeWorkspace ? activeWorkspace.name : 'Select a workspace'}
+            </h2>
+            {activeWorkspace?.folders?.[0] && (
+              <p className="text-xs text-gray-500 font-mono truncate">{activeWorkspace.folders[0]}</p>
+            )}
+          </div>
           <div className="flex items-center space-x-3">
             {availableModels.length > 0 && (
               <select
@@ -432,22 +506,20 @@ function App() {
               </select>
             )}
             {activeWorkspace && (
-              <>
-                <button
-                  onClick={() => void handleIndexWorkspace()}
-                  disabled={isIndexing}
-                  className="px-4 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-md text-sm font-medium transition-colors disabled:opacity-50"
-                >
-                  {isIndexing ? 'Indexing...' : 'Index Workspace'}
-                </button>
-                <button
-                  onClick={() => setShowSettings(true)}
-                  className="px-4 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-md text-sm font-medium transition-colors"
-                >
-                  Settings
-                </button>
-              </>
+              <button
+                onClick={() => void handleIndexWorkspace()}
+                disabled={isIndexing}
+                className="px-4 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-md text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                {isIndexing ? 'Indexing...' : 'Index Workspace'}
+              </button>
             )}
+            <button
+              onClick={() => setShowSettings(true)}
+              className="px-4 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-md text-sm font-medium transition-colors"
+            >
+              Settings
+            </button>
           </div>
         </div>
 
@@ -494,29 +566,35 @@ function App() {
         </div>
       </div>
 
-      {showSettings && activeWorkspace && (
+      {showSettings && (
         <SettingsModal
           activeWorkspace={activeWorkspace}
+          gitInitPolicy={gitInitPolicy}
           onClose={() => setShowSettings(false)}
-          onUpdate={name => void handleUpdateWorkspaceName(name)}
-          onDelete={() => void handleDeleteWorkspace()}
-          onAddFolder={() => setBrowserMode('folder')}
-          onRemoveFolder={(path: string) => void handleModifyWorkspaceList('remove-folder', { workspace_id: activeWorkspace.id, folder_path: path })}
-          onAddFile={() => setBrowserMode('file')}
-          onRemoveFile={(path: string) => void handleModifyWorkspaceList('remove-file', { workspace_id: activeWorkspace.id, file_path: path })}
+          onUpdate={name => { if (activeWorkspace) void handleUpdateWorkspaceName(name) }}
+          onDelete={() => { if (activeWorkspace) void handleDeleteWorkspace() }}
+          onAddFolder={() => { if (activeWorkspace) setBrowserMode('folder') }}
+          onRemoveFolder={(path: string) => { if (activeWorkspace) void handleModifyWorkspaceList('remove-folder', { workspace_id: activeWorkspace.id, folder_path: path }) }}
+          onAddFile={() => { if (activeWorkspace) setBrowserMode('file') }}
+          onRemoveFile={(path: string) => { if (activeWorkspace) void handleModifyWorkspaceList('remove-file', { workspace_id: activeWorkspace.id, file_path: path }) }}
+          onGitInitPolicyChange={policy => void handleGitInitPolicyChange(policy)}
         />
       )}
 
-      {browserMode && activeWorkspace && (
+      {browserMode && (activeWorkspace || browserMode === 'open-workspace') && (
         <FileBrowserModal
           API_URL={API_URL}
-          mode={browserMode}
+          mode={browserMode === 'open-workspace' ? 'folder' : (browserMode as 'folder' | 'file')}
           onClose={() => setBrowserMode(null)}
           onSelect={(path: string) => {
-            void handleModifyWorkspaceList(browserMode === 'folder' ? 'add-folder' : 'add-file', {
-              workspace_id: activeWorkspace.id,
-              [browserMode === 'folder' ? 'folder_path' : 'file_path']: path,
-            })
+            if (browserMode === 'open-workspace') {
+              void handleOpenWorkspace(path)
+            } else if (activeWorkspace) {
+              void handleModifyWorkspaceList(browserMode === 'folder' ? 'add-folder' : 'add-file', {
+                workspace_id: activeWorkspace.id,
+                [browserMode === 'folder' ? 'folder_path' : 'file_path']: path,
+              })
+            }
             setBrowserMode(null)
           }}
         />
