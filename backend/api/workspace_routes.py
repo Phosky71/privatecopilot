@@ -1,9 +1,16 @@
+
+from core.logging_config import logger
 from fastapi import APIRouter, HTTPException
-from typing import List, Dict, Any
 from services.workspace_service import workspace_service
-from api.schemas import (CreateWorkspaceRequest, AddFolderRequest, 
-    SwitchWorkspaceRequest, UpdateWorkspaceRequest, 
-    FileRequest, RemoveFolderRequest)
+
+from api.schemas import (
+    AddFolderRequest,
+    CreateWorkspaceRequest,
+    FileRequest,
+    RemoveFolderRequest,
+    SwitchWorkspaceRequest,
+    UpdateWorkspaceRequest,
+)
 
 router = APIRouter()
 
@@ -17,7 +24,7 @@ def create_workspace(request: CreateWorkspaceRequest):
         if active_workspace_id is None:
             active_workspace_id = ws["id"]
         return ws
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("/")
@@ -29,7 +36,7 @@ def add_folder(request: AddFolderRequest):
     try:
         ws = workspace_service.add_folder(request.workspace_id, request.folder_path)
         return ws
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/switch")
@@ -39,7 +46,7 @@ def switch_workspace(request: SwitchWorkspaceRequest):
         global active_workspace_id
         active_workspace_id = ws["id"]
         return {"status": "success", "active_workspace": ws}
-    except Exception as e:
+    except Exception:  # noqa: BLE001
         raise HTTPException(status_code=404, detail="Workspace not found")
 
 @router.get("/status")
@@ -48,7 +55,8 @@ def get_status():
         try:
             ws = workspace_service.get_workspace(active_workspace_id)
             return {"active_workspace": ws}
-        except:
+        except (ValueError, OSError, KeyError) as e:
+            logger.debug("Active workspace lookup failed: %s", e)
             return {"active_workspace": None}
     return {"active_workspace": None}
 
@@ -57,7 +65,7 @@ def update_workspace(request: UpdateWorkspaceRequest):
     try:
         ws = workspace_service.update_workspace_name(request.workspace_id, request.name)
         return ws
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.delete("/{workspace_id}")
@@ -68,7 +76,7 @@ def delete_workspace(workspace_id: str):
         if active_workspace_id == workspace_id:
             active_workspace_id = None
         return {"status": "success"}
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/add-file")
@@ -76,7 +84,7 @@ def add_file(request: FileRequest):
     try:
         ws = workspace_service.add_file(request.workspace_id, request.file_path)
         return ws
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/remove-file")
@@ -84,7 +92,7 @@ def remove_file(request: FileRequest):
     try:
         ws = workspace_service.remove_file(request.workspace_id, request.file_path)
         return ws
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/remove-folder")
@@ -92,5 +100,5 @@ def remove_folder(request: RemoveFolderRequest):
     try:
         ws = workspace_service.remove_folder(request.workspace_id, request.folder_path)
         return ws
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(e))

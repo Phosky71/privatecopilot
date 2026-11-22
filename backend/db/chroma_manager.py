@@ -1,6 +1,6 @@
 import os
+
 import chromadb
-from chromadb.config import Settings
 
 WORKSPACES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "workspaces")
 

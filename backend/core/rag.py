@@ -1,12 +1,14 @@
-from typing import List, Dict, Any
+from typing import Any
+
 from core.embeddings import embedding_service
 from db.chroma_manager import chroma_manager
+
 
 class RAGService:
     def __init__(self):
         pass
 
-    def search(self, workspace_id: str, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+    def search(self, workspace_id: str, query: str, top_k: int = 5) -> list[dict[str, Any]]:
         collection = chroma_manager.get_collection(workspace_id)
         
         # Check if collection is empty

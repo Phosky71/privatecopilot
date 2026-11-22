@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
-from api.schemas import GitApplyRequest
 from services.git_service import git_service
+
+from api.schemas import GitApplyRequest
 
 router = APIRouter()
 
@@ -20,5 +21,12 @@ def apply_git_edit(request: GitApplyRequest):
             request.replacement
         )
         return {"status": "success", "branch": branch}
-    except Exception as e:
+    except ValueError as e:
+        msg = str(e)
+        if "outside the repository" in msg:
+            raise HTTPException(status_code=403, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e))

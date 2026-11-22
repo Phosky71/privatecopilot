@@ -1,19 +1,26 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-import uvicorn
+import os
 
-from api.workspace_routes import router as workspace_router
+import uvicorn
 from api.chat_routes import router as chat_router
-from api.index_routes import router as index_router
-from api.model_routes import router as model_router
 from api.fs_routes import router as fs_router
 from api.git_routes import router as git_router
+from api.index_routes import router as index_router
+from api.model_routes import router as model_router
+from api.workspace_routes import router as workspace_router
+from core.logging_config import configure_logging
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+configure_logging()
 
 app = FastAPI(title="PrivateCopilot API")
 
+_allowed = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
+allowed_origins = [o.strip() for o in _allowed.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -1,7 +1,7 @@
+from core.llm import llm_client
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from core.llm import llm_client
 
 router = APIRouter()
 
@@ -14,7 +14,7 @@ def chat(request: ChatRequest):
     try:
         response = llm_client.generate(request.workspace_id, request.query)
         return {"response": response}
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/stream")

@@ -1,4 +1,4 @@
-from typing import List
+
 
 class EmbeddingService:
     def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
@@ -12,10 +12,10 @@ class EmbeddingService:
             self._model = SentenceTransformer(self.model_name)
         return self._model
 
-    def embed_text(self, text: str) -> List[float]:
+    def embed_text(self, text: str) -> list[float]:
         return self.model.encode(text).tolist()
 
-    def embed_texts(self, texts: List[str]) -> List[List[float]]:
+    def embed_texts(self, texts: list[str]) -> list[list[float]]:
         return self.model.encode(texts).tolist()
 
 embedding_service = EmbeddingService()

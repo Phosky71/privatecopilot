@@ -1,16 +1,18 @@
-import requests
 import json
-import os
-from typing import List, Dict, Any, Tuple
+from typing import Any
+
+import requests
+from core.logging_config import logger
 from core.rag import rag_service
 from services.workspace_service import workspace_service
+
 
 class LLMClient:
     def __init__(self, base_url: str = "http://localhost:11434"):
         self.base_url = base_url
         self.active_model_id = None
 
-    def get_models_config(self) -> Dict[str, Any]:
+    def get_models_config(self) -> dict[str, Any]:
         try:
             res = requests.get(f"{self.base_url}/api/tags", timeout=5)
             if res.status_code == 200:
@@ -29,8 +31,8 @@ class LLMClient:
                     "default": default_model,
                     "models": models
                 }
-        except Exception as e:
-            print(f"Error fetching Ollama models: {e}")
+        except requests.RequestException as e:
+            logger.warning("Error fetching Ollama models: %s", e)
             
         return {
             "default": None,
@@ -41,7 +43,7 @@ class LLMClient:
         self.active_model_id = model_id
         return model_id
 
-    def resolve_model_details(self, workspace_id: str = None) -> Tuple[str, str]:
+    def resolve_model_details(self, workspace_id: str | None = None) -> tuple[str, str]:
         # 1. Workspace model
         if workspace_id:
             try:
@@ -49,8 +51,8 @@ class LLMClient:
                 ws_model = ws.get("model")
                 if ws_model:
                     return ws_model, "workspace"
-            except:
-                pass
+            except (ValueError, OSError, KeyError) as e:
+                logger.debug("Could not resolve workspace model: %s", e)
                 
         # 2. Global selected model
         if self.active_model_id:
@@ -63,7 +65,7 @@ class LLMClient:
             
         return "", "none"
 
-    def resolve_model(self, workspace_id: str = None) -> str:
+    def resolve_model(self, workspace_id: str | None = None) -> str:
         model, _ = self.resolve_model_details(workspace_id)
         return model
 
@@ -97,7 +99,7 @@ class LLMClient:
         return prompt
 
     def _log_request(self, workspace_id: str, model_name: str):
-        print(f"\n[LLM]\nworkspace={workspace_id}\nselected_model={model_name}\n")
+        logger.info("LLM request: workspace=%s selected_model=%s", workspace_id, model_name)
 
     def generate(self, workspace_id: str, query: str) -> str:
         model = self.resolve_model(workspace_id)
@@ -114,7 +116,7 @@ class LLMClient:
         if response.status_code == 200:
             return response.json().get("response", "")
         else:
-            raise Exception(f"Ollama API Error: {response.text}")
+            raise RuntimeError(f"Ollama API Error: {response.text}")
 
     def generate_stream(self, workspace_id: str, query: str):
         model = self.resolve_model(workspace_id)
@@ -122,7 +124,6 @@ class LLMClient:
         
         prompt = self.build_prompt(workspace_id, query)
         
-        import json
         response = requests.post(f"{self.base_url}/api/generate", json={
             "model": model,
             "prompt": prompt,

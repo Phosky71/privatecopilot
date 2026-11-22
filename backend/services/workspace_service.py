@@ -1,8 +1,8 @@
-import os
 import json
-import uuid
+import os
 import shutil
-from typing import List, Dict, Any
+import uuid
+from typing import Any
 
 WORKSPACES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "workspaces")
 
@@ -17,7 +17,7 @@ class WorkspaceService:
     def _get_config_path(self, workspace_id: str) -> str:
         return os.path.join(self._get_workspace_dir(workspace_id), "config.json")
         
-    def create_workspace(self, name: str) -> Dict[str, Any]:
+    def create_workspace(self, name: str) -> dict[str, Any]:
         workspace_id = str(uuid.uuid4())
         ws_dir = self._get_workspace_dir(workspace_id)
         os.makedirs(ws_dir, exist_ok=True)
@@ -34,7 +34,7 @@ class WorkspaceService:
             
         return config
         
-    def get_workspaces(self) -> List[Dict[str, Any]]:
+    def get_workspaces(self) -> list[dict[str, Any]]:
         workspaces = []
         if not os.path.exists(WORKSPACES_DIR):
             return workspaces
@@ -46,7 +46,7 @@ class WorkspaceService:
                     workspaces.append(json.load(f))
         return workspaces
         
-    def get_workspace(self, workspace_id: str) -> Dict[str, Any]:
+    def get_workspace(self, workspace_id: str) -> dict[str, Any]:
         config_path = self._get_config_path(workspace_id)
         if not os.path.exists(config_path):
             raise ValueError(f"Workspace {workspace_id} not found")
@@ -57,7 +57,7 @@ class WorkspaceService:
                 config["files"] = []
             return config
             
-    def add_folder(self, workspace_id: str, folder_path: str) -> Dict[str, Any]:
+    def add_folder(self, workspace_id: str, folder_path: str) -> dict[str, Any]:
         if not os.path.exists(folder_path):
             raise ValueError(f"Folder path does not exist: {folder_path}")
             
@@ -70,7 +70,7 @@ class WorkspaceService:
                 
         return config
         
-    def remove_folder(self, workspace_id: str, folder_path: str) -> Dict[str, Any]:
+    def remove_folder(self, workspace_id: str, folder_path: str) -> dict[str, Any]:
         config = self.get_workspace(workspace_id)
         
         if folder_path in config["folders"]:
@@ -80,14 +80,14 @@ class WorkspaceService:
                 
         return config
         
-    def update_model(self, workspace_id: str, model: str) -> Dict[str, Any]:
+    def update_model(self, workspace_id: str, model: str) -> dict[str, Any]:
         config = self.get_workspace(workspace_id)
         config["model"] = model
         with open(self._get_config_path(workspace_id), "w") as f:
             json.dump(config, f, indent=4)
         return config
 
-    def update_workspace_name(self, workspace_id: str, name: str) -> Dict[str, Any]:
+    def update_workspace_name(self, workspace_id: str, name: str) -> dict[str, Any]:
         config = self.get_workspace(workspace_id)
         config["name"] = name
         with open(self._get_config_path(workspace_id), "w") as f:
@@ -102,7 +102,7 @@ class WorkspaceService:
         if workspace_id in chroma_manager.clients:
             del chroma_manager.clients[workspace_id]
 
-    def add_file(self, workspace_id: str, file_path: str) -> Dict[str, Any]:
+    def add_file(self, workspace_id: str, file_path: str) -> dict[str, Any]:
         if not os.path.exists(file_path):
             raise ValueError(f"File path does not exist: {file_path}")
             
@@ -115,7 +115,7 @@ class WorkspaceService:
                 
         return config
         
-    def remove_file(self, workspace_id: str, file_path: str) -> Dict[str, Any]:
+    def remove_file(self, workspace_id: str, file_path: str) -> dict[str, Any]:
         config = self.get_workspace(workspace_id)
         
         if file_path in config.get("files", []):

@@ -1,5 +1,7 @@
 import os
 import platform
+
+from core.logging_config import logger
 from fastapi import APIRouter, HTTPException
 
 router = APIRouter()
@@ -34,13 +36,13 @@ def list_fs(path: str = ""):
                     "path": full_path.replace("\\", "/"),
                     "is_dir": is_dir
                 })
-            except PermissionError:
-                pass
-            except Exception:
-                pass
+            except PermissionError as e:
+                logger.warning("Permission denied listing %s: %s", full_path, e)
+            except OSError as e:
+                logger.warning("OS error listing %s: %s", full_path, e)
                 
         # Sort directories first, then alphabetically
         items.sort(key=lambda x: (not x["is_dir"], x["name"].lower()))
         return {"path": path.replace("\\", "/"), "items": items}
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(e))
