@@ -4,14 +4,15 @@ PrivateCopilot is a **local, single-user AI coding assistant**. It provides isol
 
 ## Implemented features
 
-- **Workspace isolation**: create/delete workspaces, attach folders and individual files, switch active workspace.
+- **Workspace isolation**: open a folder directly as a workspace (`+ Open Workspace Folder` / `POST /workspace/open`), attach folders/files, switch active workspace.
 - **Indexing**: incremental indexing by file mtime, chunking (1000 chars, 200 overlap), embeddings stored in a per-workspace ChromaDB collection.
 - **Semantic search (RAG)**: top-k retrieval injected into the LLM prompt.
 - **Streaming chat**: Server-Sent Events from the FastAPI backend to the React frontend.
 - **Model selection**: list Ollama models, select per workspace or globally.
 - **File browser**: browse the host filesystem to pick folders/files (intended for local use).
 - **HITL file editing**: assistant emits `<edit file="...">` blocks; the UI shows a diff and the user accepts/rejects. Accepted edits create a `feature/ai-edit-*` branch, apply the change (preserving CRLF/LF) and commit.
-- **Git status panel**: branch and pending changes for the first folder of the active workspace.
+- **Git status panel**: branch and pending changes for the first folder of the active workspace; `/git/status` is read-only and reports `initialized`.
+- **Configurable Git init policy**: `ask` (default), `auto`, `never` via `/git/config` and `/git/init`.
 - **Health endpoint**: `GET /health` reports API status, Ollama availability and core dependencies.
 
 ## Requirements
