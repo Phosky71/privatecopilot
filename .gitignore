@@ -21,6 +21,8 @@ build/
 # Database / Vector Store
 chroma_data/
 workspaces/*/chroma_db/
+workspaces/.app_state.json
+**/.app_state.json
 
 # OS
 .DS_Store
