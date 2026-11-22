@@ -201,6 +201,7 @@ function App() {
 
       let done = false
       let buffer = ''
+      let streamError: string | null = null
 
       while (!done) {
         const { value, done: readerDone } = await reader.read()
@@ -217,14 +218,32 @@ function App() {
               const jsonStr = trimmedLine.substring(6)
               if (!jsonStr) continue
               try {
-                const data = JSON.parse(jsonStr) as { response?: string }
-                if (data.response !== undefined) {
+                const data = JSON.parse(jsonStr) as { response?: string; error?: string; done?: boolean }
+                if (data.error) {
+                  streamError = data.error
+                } else if (data.response !== undefined) {
                   chunkContent += data.response
+                }
+                if (data.done) {
+                  done = true
                 }
               } catch {
                 // Ignore silent JSON parse errors for completely broken lines
               }
             }
+          }
+
+          if (streamError) {
+            setMessages(prev => {
+              const newMessages = [...prev]
+              if (newMessages.length > 0) {
+                const lastMsg = newMessages[newMessages.length - 1]
+                lastMsg.content = `Error: ${streamError}`
+                lastMsg.status = 'done'
+              }
+              return newMessages
+            })
+            break
           }
 
           if (chunkContent) {

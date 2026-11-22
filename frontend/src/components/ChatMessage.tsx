@@ -11,32 +11,7 @@ interface ChatMessageProps {
   API_URL: string;
 }
 
-const parseContent = (content: string) => {
-  const parts = [];
-  let lastIndex = 0;
-  // Regex to match <edit file="..."> ... </edit>
-  const regex = /<edit\s+file="([^"]+)">\s*<original>([\s\S]*?)<\/original>\s*<replacement>([\s\S]*?)<\/replacement>\s*<\/edit>/g;
-  let match;
-
-  while ((match = regex.exec(content)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push({ type: 'text', content: content.slice(lastIndex, match.index) });
-    }
-    parts.push({
-      type: 'edit',
-      file: match[1],
-      original: match[2].replace(/^\n/, ''),
-      replacement: match[3].replace(/^\n/, '')
-    });
-    lastIndex = regex.lastIndex;
-  }
-  
-  if (lastIndex < content.length) {
-    parts.push({ type: 'text', content: content.slice(lastIndex) });
-  }
-  
-  return parts;
-};
+import { parseContent } from '../utils/editParser';
 
 export default function ChatMessage({ message, workspaceId, API_URL }: ChatMessageProps) {
   const isUser = message.role === 'user';
