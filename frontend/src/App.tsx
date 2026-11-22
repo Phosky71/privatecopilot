@@ -1,106 +1,157 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import SettingsModal from './components/SettingsModal'
 import FileBrowserModal from './components/FileBrowserModal'
 import ChatMessage, { type Message } from './components/ChatMessage'
+import { API_URL } from './config'
+import {
+  type Workspace,
+  type ModelInfo,
+  type ModelsResponse,
+  type GitStatus,
+} from './types'
 
 function App() {
-  const [workspaces, setWorkspaces] = useState<any[]>([])
-  const [activeWorkspace, setActiveWorkspace] = useState<any>(null)
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([])
+  const [activeWorkspace, setActiveWorkspace] = useState<Workspace | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isIndexing, setIsIndexing] = useState(false)
-  const [availableModels, setAvailableModels] = useState<any[]>([])
+  const [availableModels, setAvailableModels] = useState<ModelInfo[]>([])
   const [selectedModelId, setSelectedModelId] = useState<string>('')
   const [showSettings, setShowSettings] = useState(false)
-  const [browserMode, setBrowserMode] = useState<'folder'|'file'|null>(null)
-  const [gitStatus, setGitStatus] = useState<any>(null)
+  const [browserMode, setBrowserMode] = useState<'folder' | 'file' | null>(null)
+  const [gitStatus, setGitStatus] = useState<GitStatus | null>(null)
 
-  const API_URL = 'http://localhost:8000'
-
-  const fetchGitStatus = async () => {
+  const fetchGitStatus = useCallback(async () => {
     if (!activeWorkspace) return
     try {
       const res = await fetch(`${API_URL}/git/status?workspace_id=${activeWorkspace.id}`)
-      const data = await res.json()
+      if (!res.ok) {
+        console.error('Failed to fetch git status', res.status)
+        return
+      }
+      const data: GitStatus = await res.json()
       setGitStatus(data)
-    } catch(e) {}
-  }
-
-  useEffect(() => {
-    fetchGitStatus()
-    const interval = setInterval(fetchGitStatus, 5000)
-    return () => clearInterval(interval)
+    } catch (err: unknown) {
+      console.error(err)
+    }
   }, [activeWorkspace])
 
-  useEffect(() => {
-    fetchWorkspaces()
-    fetchModels()
-  }, [])
-
-  const fetchModels = async () => {
+  const fetchModels = useCallback(async () => {
     try {
       const res = await fetch(`${API_URL}/model`)
-      const data = await res.json()
+      if (!res.ok) {
+        console.error('Failed to fetch models', res.status)
+        return
+      }
+      const data: ModelsResponse = await res.json()
       setAvailableModels(data.models || [])
-      const defaultModel = data.models?.find((m: any) => m.model === data.default)
-      if (defaultModel) {
-        setSelectedModelId(defaultModel.id)
+      if (activeWorkspace) {
+        const wsModel = (data.models || []).find((m: ModelInfo) => m.model === activeWorkspace.model)
+        if (wsModel) {
+          setSelectedModelId(wsModel.id)
+        }
+      } else {
+        const defaultModel = (data.models || []).find((m: ModelInfo) => m.model === data.default)
+        if (defaultModel) {
+          setSelectedModelId(defaultModel.id)
+        }
       }
-    } catch (e) {
-      console.error(e)
+    } catch (err: unknown) {
+      console.error(err)
     }
-  }
+  }, [activeWorkspace])
 
-  useEffect(() => {
-    if (activeWorkspace && availableModels.length > 0) {
-      const wsModel = availableModels.find(m => m.model === activeWorkspace.model)
-      if (wsModel) {
-        setSelectedModelId(wsModel.id)
-      }
-    }
-  }, [activeWorkspace, availableModels])
-
-  const fetchWorkspaces = async () => {
-    try {
-      const res = await fetch(`${API_URL}/workspace`)
-      const data = await res.json()
-      setWorkspaces(data)
-      if (data.length > 0 && !activeWorkspace) {
-        handleWorkspaceSwitch(data[0])
-      }
-    } catch (e) {
-      console.error(e)
-    }
-  }
-
-  const handleWorkspaceSwitch = async (ws: any) => {
+  const handleWorkspaceSwitch = useCallback(async (ws: Workspace) => {
     setActiveWorkspace(ws)
     setMessages([])
     try {
       const res = await fetch(`${API_URL}/workspace/switch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workspace_id: ws.id })
+        body: JSON.stringify({ workspace_id: ws.id }),
       })
+      if (!res.ok) {
+        console.error('Failed to switch workspace', res.status)
+        return
+      }
       const data = await res.json()
-      // ensure we use the updated workspace data that includes model
-      setActiveWorkspace(data.active_workspace)
-    } catch (e) {
-      console.error(e)
+      const switched = data.active_workspace as Workspace
+      setActiveWorkspace(switched)
+      const wsModel = availableModels.find((m: ModelInfo) => m.model === switched.model)
+      if (wsModel) {
+        setSelectedModelId(wsModel.id)
+      }
+    } catch (err: unknown) {
+      console.error(err)
     }
-  }
+  }, [availableModels])
+
+  const fetchWorkspaces = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/workspace`)
+      if (!res.ok) {
+        console.error('Failed to fetch workspaces', res.status)
+        return
+      }
+      const data: Workspace[] = await res.json()
+      setWorkspaces(data)
+      if (data.length > 0 && !activeWorkspace) {
+        void handleWorkspaceSwitch(data[0])
+      }
+    } catch (err: unknown) {
+      console.error(err)
+    }
+  }, [activeWorkspace, handleWorkspaceSwitch])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      await Promise.resolve()
+      if (cancelled) return
+      await fetchGitStatus()
+    })()
+    const interval = setInterval(() => {
+      void fetchGitStatus()
+    }, 5000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [fetchGitStatus])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      await Promise.resolve()
+      if (cancelled) return
+      await fetchWorkspaces()
+      await fetchModels()
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [fetchWorkspaces, fetchModels])
 
   const handleCreateWorkspace = async () => {
-    const name = prompt("Enter workspace name:")
+    const name = prompt('Enter workspace name:')
     if (name) {
-      const res = await fetch(`${API_URL}/workspace/create`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name })
-      })
-      const ws = await res.json()
-      fetchWorkspaces()
-      handleWorkspaceSwitch(ws)
+      try {
+        const res = await fetch(`${API_URL}/workspace/create`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        })
+        if (!res.ok) {
+          console.error('Failed to create workspace', res.status)
+          return
+        }
+        const ws: Workspace = await res.json()
+        await fetchWorkspaces()
+        await handleWorkspaceSwitch(ws)
+      } catch (err: unknown) {
+        console.error(err)
+      }
     }
   }
 
@@ -108,14 +159,18 @@ function App() {
     if (!activeWorkspace) return
     setIsIndexing(true)
     try {
-      await fetch(`${API_URL}/index`, {
+      const res = await fetch(`${API_URL}/index`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workspace_id: activeWorkspace.id })
+        body: JSON.stringify({ workspace_id: activeWorkspace.id }),
       })
-      alert("Indexing complete!")
-    } catch (e) {
-      console.error(e)
+      if (!res.ok) {
+        console.error('Failed to index workspace', res.status)
+        return
+      }
+      alert('Indexing complete!')
+    } catch (err: unknown) {
+      console.error(err)
     } finally {
       setIsIndexing(false)
     }
@@ -136,24 +191,25 @@ function App() {
       const response = await fetch(`${API_URL}/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workspace_id: activeWorkspace.id, query: userMessage.content })
+        body: JSON.stringify({ workspace_id: activeWorkspace.id, query: userMessage.content }),
       })
 
-      if (!response.body) throw new Error("No response body")
+      if (!response.ok || !response.body) throw new Error('No response body')
+
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
-      
-      let done = false;
-      let buffer = '';
-      
+
+      let done = false
+      let buffer = ''
+
       while (!done) {
         const { value, done: readerDone } = await reader.read()
         done = readerDone
         if (value) {
           buffer += decoder.decode(value, { stream: true })
           const lines = buffer.split('\n')
-          buffer = lines.pop() || '' // Keep the last incomplete line in the buffer
-          
+          buffer = lines.pop() || ''
+
           let chunkContent = ''
           for (const line of lines) {
             const trimmedLine = line.trim()
@@ -161,20 +217,19 @@ function App() {
               const jsonStr = trimmedLine.substring(6)
               if (!jsonStr) continue
               try {
-                const data = JSON.parse(jsonStr)
+                const data = JSON.parse(jsonStr) as { response?: string }
                 if (data.response !== undefined) {
                   chunkContent += data.response
                 }
-              } catch (err) {
-                // Ignore silent JSON parse errors for completely broken lines just in case
+              } catch {
+                // Ignore silent JSON parse errors for completely broken lines
               }
             }
           }
-          
+
           if (chunkContent) {
             setMessages(prev => {
               const newMessages = [...prev]
-              // Prevent React StrictMode double mutation by creating a deep copy of the last message
               const lastMsg = { ...newMessages[newMessages.length - 1] }
               lastMsg.content += chunkContent
               lastMsg.status = 'streaming'
@@ -184,20 +239,23 @@ function App() {
           }
         }
       }
-      
+
       setMessages(prev => {
         const newMessages = [...prev]
-        newMessages[newMessages.length - 1].status = 'done'
+        if (newMessages.length > 0) {
+          newMessages[newMessages.length - 1].status = 'done'
+        }
         return newMessages
       })
-      
-    } catch (e) {
-      console.error(e)
+    } catch (err: unknown) {
+      console.error(err)
       setMessages(prev => {
         const newMessages = [...prev]
-        const lastMsg = newMessages[newMessages.length - 1]
-        lastMsg.content = "Error communicating with AI assistant."
-        lastMsg.status = 'done'
+        if (newMessages.length > 0) {
+          const lastMsg = newMessages[newMessages.length - 1]
+          lastMsg.content = 'Error communicating with AI assistant.'
+          lastMsg.status = 'done'
+        }
         return newMessages
       })
     }
@@ -207,62 +265,85 @@ function App() {
     const modelId = e.target.value
     setSelectedModelId(modelId)
     try {
-      await fetch(`${API_URL}/model/set`, {
+      const res = await fetch(`${API_URL}/model/set`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           model_id: modelId,
-          workspace_id: activeWorkspace?.id || undefined
-        })
+          workspace_id: activeWorkspace?.id,
+        }),
       })
+      if (!res.ok) {
+        console.error('Failed to set model', res.status)
+        return
+      }
       if (activeWorkspace) {
         setActiveWorkspace({ ...activeWorkspace, model: modelId })
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(err)
     }
   }
 
   const handleUpdateWorkspaceName = async (name: string) => {
+    if (!activeWorkspace) return
     try {
       const res = await fetch(`${API_URL}/workspace/update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workspace_id: activeWorkspace.id, name })
+        body: JSON.stringify({ workspace_id: activeWorkspace.id, name }),
       })
-      const ws = await res.json()
+      if (!res.ok) {
+        console.error('Failed to update workspace name', res.status)
+        return
+      }
+      const ws: Workspace = await res.json()
       setActiveWorkspace(ws)
-      fetchWorkspaces()
-    } catch(e) { console.error(e) }
+      await fetchWorkspaces()
+    } catch (err: unknown) {
+      console.error(err)
+    }
   }
 
   const handleDeleteWorkspace = async () => {
+    if (!activeWorkspace) return
     try {
-      await fetch(`${API_URL}/workspace/${activeWorkspace.id}`, { method: 'DELETE' })
+      const res = await fetch(`${API_URL}/workspace/${activeWorkspace.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        console.error('Failed to delete workspace', res.status)
+        return
+      }
       setActiveWorkspace(null)
       setShowSettings(false)
-      fetchWorkspaces()
-    } catch(e) { console.error(e) }
+      await fetchWorkspaces()
+    } catch (err: unknown) {
+      console.error(err)
+    }
   }
 
-  const handleModifyWorkspaceList = async (endpoint: string, payload: any) => {
+  const handleModifyWorkspaceList = async (endpoint: string, payload: Record<string, unknown>) => {
     try {
       const res = await fetch(`${API_URL}/workspace/${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       })
-      const ws = await res.json()
+      if (!res.ok) {
+        console.error('Failed to modify workspace list', res.status)
+        return
+      }
+      const ws: Workspace = await res.json()
       setActiveWorkspace(ws)
-    } catch(e) { console.error(e) }
+    } catch (err: unknown) {
+      console.error(err)
+    }
   }
 
   return (
     <div className="flex h-screen bg-gray-900 text-gray-100 font-sans">
-      {/* Sidebar */}
       <div className="w-64 bg-gray-800 border-r border-gray-700 p-4 flex flex-col">
         <h1 className="text-xl font-bold mb-6 text-blue-400">PrivateCopilot</h1>
-        
+
         <div className="flex-1">
           <h2 className="text-xs uppercase text-gray-400 font-semibold mb-3">Workspaces</h2>
           <div className="space-y-2">
@@ -270,9 +351,9 @@ function App() {
               <p className="text-sm text-gray-500">No workspaces yet.</p>
             ) : (
               workspaces.map(ws => (
-                <button 
-                  key={ws.id} 
-                  onClick={() => handleWorkspaceSwitch(ws)}
+                <button
+                  key={ws.id}
+                  onClick={() => void handleWorkspaceSwitch(ws)}
                   className={`w-full text-left px-3 py-2 rounded-md transition-colors ${activeWorkspace?.id === ws.id ? 'bg-blue-600 text-white' : 'hover:bg-gray-700 text-gray-300'}`}
                 >
                   {ws.name}
@@ -281,8 +362,7 @@ function App() {
             )}
           </div>
         </div>
-        
-        {/* Git Status Panel */}
+
         <div className="flex-1 mt-6 border-t border-gray-700 pt-4 overflow-y-auto">
           <h2 className="text-xs uppercase text-gray-400 font-semibold mb-3">Git Status</h2>
           {gitStatus ? (
@@ -307,26 +387,24 @@ function App() {
           )}
         </div>
 
-        <button 
-          onClick={handleCreateWorkspace}
+        <button
+          onClick={() => void handleCreateWorkspace()}
           className="mt-4 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors flex items-center justify-center font-medium shadow-sm"
         >
           <span className="mr-2">+</span> New Workspace
         </button>
       </div>
 
-      {/* Main Area */}
       <div className="flex-1 flex flex-col relative">
-        {/* Settings Header */}
         <div className="h-16 border-b border-gray-800 flex items-center justify-between px-6 bg-gray-900 z-10 shadow-sm">
           <h2 className="text-lg font-semibold text-gray-200">
             {activeWorkspace ? activeWorkspace.name : 'Select a workspace'}
           </h2>
           <div className="flex items-center space-x-3">
             {availableModels.length > 0 && (
-              <select 
-                value={selectedModelId} 
-                onChange={handleModelChange}
+              <select
+                value={selectedModelId}
+                onChange={e => void handleModelChange(e)}
                 className="bg-gray-800 text-sm text-gray-200 border border-gray-700 rounded-md px-3 py-1.5 focus:outline-none focus:border-blue-500 cursor-pointer"
               >
                 {availableModels.map(m => (
@@ -336,14 +414,14 @@ function App() {
             )}
             {activeWorkspace && (
               <>
-                <button 
-                  onClick={handleIndexWorkspace}
+                <button
+                  onClick={() => void handleIndexWorkspace()}
                   disabled={isIndexing}
                   className="px-4 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-md text-sm font-medium transition-colors disabled:opacity-50"
                 >
                   {isIndexing ? 'Indexing...' : 'Index Workspace'}
                 </button>
-                <button 
+                <button
                   onClick={() => setShowSettings(true)}
                   className="px-4 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-md text-sm font-medium transition-colors"
                 >
@@ -354,7 +432,6 @@ function App() {
           </div>
         </div>
 
-        {/* Chat Area */}
         <div className="flex-1 p-6 overflow-y-auto space-y-6">
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-500 space-y-4">
@@ -367,28 +444,27 @@ function App() {
             </div>
           ) : (
             messages.map((msg, i) => (
-              <ChatMessage 
-                key={i} 
-                message={msg} 
-                workspaceId={activeWorkspace?.id || ''} 
-                API_URL={API_URL} 
+              <ChatMessage
+                key={i}
+                message={msg}
+                workspaceId={activeWorkspace?.id || ''}
+                API_URL={API_URL}
               />
             ))
           )}
         </div>
-        
-        {/* Input Area */}
+
         <div className="p-4 bg-gray-900 border-t border-gray-800">
-          <form className="max-w-4xl mx-auto flex shadow-sm" onSubmit={handleSubmit}>
-            <input 
-              type="text" 
+          <form className="max-w-4xl mx-auto flex shadow-sm" onSubmit={e => void handleSubmit(e)}>
+            <input
+              type="text"
               value={input}
               onChange={e => setInput(e.target.value)}
               disabled={!activeWorkspace}
-              placeholder={activeWorkspace ? "Ask anything..." : "Select a workspace to chat"} 
+              placeholder={activeWorkspace ? 'Ask anything...' : 'Select a workspace to chat'}
               className="flex-1 bg-gray-800 border border-gray-700 rounded-l-lg px-5 py-3.5 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 transition-colors"
             />
-            <button 
+            <button
               type="submit"
               disabled={!activeWorkspace || !input.trim()}
               className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 px-6 py-3.5 rounded-r-lg font-medium transition-colors"
@@ -400,29 +476,29 @@ function App() {
       </div>
 
       {showSettings && activeWorkspace && (
-        <SettingsModal 
+        <SettingsModal
           activeWorkspace={activeWorkspace}
           onClose={() => setShowSettings(false)}
-          onUpdate={handleUpdateWorkspaceName}
-          onDelete={handleDeleteWorkspace}
+          onUpdate={name => void handleUpdateWorkspaceName(name)}
+          onDelete={() => void handleDeleteWorkspace()}
           onAddFolder={() => setBrowserMode('folder')}
-          onRemoveFolder={(path: string) => handleModifyWorkspaceList('remove-folder', { workspace_id: activeWorkspace.id, folder_path: path })}
+          onRemoveFolder={(path: string) => void handleModifyWorkspaceList('remove-folder', { workspace_id: activeWorkspace.id, folder_path: path })}
           onAddFile={() => setBrowserMode('file')}
-          onRemoveFile={(path: string) => handleModifyWorkspaceList('remove-file', { workspace_id: activeWorkspace.id, file_path: path })}
+          onRemoveFile={(path: string) => void handleModifyWorkspaceList('remove-file', { workspace_id: activeWorkspace.id, file_path: path })}
         />
       )}
-      
+
       {browserMode && activeWorkspace && (
-        <FileBrowserModal 
+        <FileBrowserModal
           API_URL={API_URL}
           mode={browserMode}
           onClose={() => setBrowserMode(null)}
           onSelect={(path: string) => {
-            handleModifyWorkspaceList(browserMode === 'folder' ? 'add-folder' : 'add-file', {
-               workspace_id: activeWorkspace.id,
-               [browserMode === 'folder' ? 'folder_path' : 'file_path']: path
-            });
-            setBrowserMode(null);
+            void handleModifyWorkspaceList(browserMode === 'folder' ? 'add-folder' : 'add-file', {
+              workspace_id: activeWorkspace.id,
+              [browserMode === 'folder' ? 'folder_path' : 'file_path']: path,
+            })
+            setBrowserMode(null)
           }}
         />
       )}

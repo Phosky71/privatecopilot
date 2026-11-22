@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { type FsEntry, type FsListResponse } from '../types';
 
 interface FileBrowserModalProps {
   onClose: () => void;
@@ -9,32 +10,43 @@ interface FileBrowserModalProps {
 
 export default function FileBrowserModal({ onClose, onSelect, API_URL, mode }: FileBrowserModalProps) {
   const [currentPath, setCurrentPath] = useState('');
-  const [items, setItems] = useState<any[]>([]);
+  const [items, setItems] = useState<FsEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  const fetchPath = async (path: string) => {
+  const fetchPath = useCallback(async (path: string) => {
     setIsLoading(true);
     try {
       const res = await fetch(`${API_URL}/fs/list?path=${encodeURIComponent(path)}`);
-      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data: FsListResponse = await res.json();
       setCurrentPath(data.path);
       setItems(data.items || []);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(err);
       setItems([]);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [API_URL]);
 
   useEffect(() => {
-    fetchPath('');
-  }, []);
+    let cancelled = false;
+    (async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+      await fetchPath('');
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchPath]);
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl flex flex-col h-[80vh] border border-gray-700 overflow-hidden">
-        
+
         {/* Header */}
         <div className="px-5 py-4 border-b border-gray-700 flex justify-between items-center bg-gray-800/80">
           <h2 className="text-lg font-semibold text-gray-100 flex items-center gap-2">
@@ -50,24 +62,24 @@ export default function FileBrowserModal({ onClose, onSelect, API_URL, mode }: F
 
         {/* Toolbar */}
         <div className="px-5 py-3 border-b border-gray-700 bg-gray-900/50 flex flex-wrap gap-3 items-center">
-          <button 
-            onClick={() => fetchPath('')} 
+          <button
+            onClick={() => void fetchPath('')}
             className="px-4 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-md text-sm font-medium transition-colors"
           >
             Drives
           </button>
-          
+
           <div className="flex-1 min-w-[200px] flex rounded-md overflow-hidden border border-gray-700 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition-all">
-            <input 
-              type="text" 
-              value={currentPath} 
+            <input
+              type="text"
+              value={currentPath}
               onChange={e => setCurrentPath(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && fetchPath(currentPath)}
+              onKeyDown={e => e.key === 'Enter' && void fetchPath(currentPath)}
               placeholder="Enter absolute path..."
               className="flex-1 bg-gray-900 px-4 py-1.5 text-sm text-gray-200 focus:outline-none"
             />
-            <button 
-              onClick={() => fetchPath(currentPath)}
+            <button
+              onClick={() => void fetchPath(currentPath)}
               className="px-4 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm font-medium border-l border-gray-700 transition-colors"
             >
               Go
@@ -75,8 +87,8 @@ export default function FileBrowserModal({ onClose, onSelect, API_URL, mode }: F
           </div>
 
           {mode === 'folder' && currentPath && (
-            <button 
-              onClick={() => onSelect(currentPath)} 
+            <button
+              onClick={() => onSelect(currentPath)}
               className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-sm font-medium shadow-sm transition-colors"
             >
               Select Current
@@ -97,20 +109,20 @@ export default function FileBrowserModal({ onClose, onSelect, API_URL, mode }: F
             </div>
           ) : (
             items.map((item, i) => (
-              <div 
-                key={i} 
+              <div
+                key={i}
                 className="flex items-center justify-between px-3 py-2 hover:bg-gray-700/50 rounded-lg group transition-colors"
               >
-                <div 
+                <div
                   className="flex items-center gap-3 cursor-pointer flex-1 min-w-0"
-                  onClick={() => item.is_dir ? fetchPath(item.path) : (mode === 'file' && onSelect(item.path))}
+                  onClick={() => (item.is_dir ? void fetchPath(item.path) : (mode === 'file' && onSelect(item.path)))}
                 >
                   <span className="text-xl flex-shrink-0">{item.is_dir ? '📁' : '📄'}</span>
                   <span className="text-sm text-gray-200 truncate">{item.name}</span>
                 </div>
                 {!item.is_dir && mode === 'file' && (
-                  <button 
-                    onClick={() => onSelect(item.path)} 
+                  <button
+                    onClick={() => onSelect(item.path)}
                     className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     Select

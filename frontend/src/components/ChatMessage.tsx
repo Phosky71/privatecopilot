@@ -1,13 +1,9 @@
-import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import DiffViewerComponent from './DiffViewerComponent';
+import { type Message } from '../types';
 
-export interface Message {
-  role: string;
-  content: string;
-  status?: 'thinking' | 'streaming' | 'done';
-}
+export type { Message };
 
 interface ChatMessageProps {
   message: Message;

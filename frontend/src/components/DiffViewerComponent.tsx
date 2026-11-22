@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import ReactDiffViewer from 'react-diff-viewer-continued';
 
 interface DiffViewerProps {
@@ -28,8 +28,8 @@ export default function DiffViewerComponent({ workspaceId, file, original, repla
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Failed to apply edit");
       setStatus('applied');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
     }
   };
 

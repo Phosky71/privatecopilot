@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
+import { type Workspace } from '../types';
 
 interface SettingsModalProps {
-  activeWorkspace: any;
+  activeWorkspace: Workspace;
   onClose: () => void;
   onUpdate: (name: string) => void;
   onDelete: () => void;
