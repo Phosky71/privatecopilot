@@ -3,7 +3,11 @@ __pycache__/
 *.py[cod]
 *$py.class
 venv/
+backend/venv/
 .env
+.pytest_cache/
+backend/.pytest_cache/
+.ruff_cache/
 
 # Node
 node_modules/
