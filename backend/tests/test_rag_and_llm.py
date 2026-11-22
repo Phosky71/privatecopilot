@@ -23,6 +23,7 @@ def isolated_chroma(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(emb_mod, "embedding_service", FixedEmbeddings())
     monkeypatch.setattr(indexer_mod, "embedding_service", FixedEmbeddings())
     monkeypatch.setattr(rag_mod, "embedding_service", FixedEmbeddings())
+    cm_mod.chroma_manager.clients.clear()
     (tmp_path / "workspaces").mkdir()
     return tmp_path / "workspaces"
 
@@ -51,6 +52,7 @@ def test_rag_count_less_than_topk(isolated_chroma: Path):
     monkeypatch.setattr(ws_mod, "WORKSPACES_DIR", str(isolated_chroma))
     monkeypatch.setattr(ws_mod.workspace_service, "_get_workspace_dir", lambda _ws: str(ws_dir))
     monkeypatch.setattr(ws_mod.workspace_service, "get_workspace", lambda _ws: {"folders": [str(src)], "files": []})
+    monkeypatch.setattr(indexer_mod, "workspace_service", ws_mod.workspace_service)
 
     idx = indexer_mod.Indexer()
     idx.index_workspace(ws)
@@ -79,6 +81,7 @@ def test_indexer_rag_reindex_removes_obsolete(isolated_chroma: Path, monkeypatch
     monkeypatch.setattr(ws_mod, "WORKSPACES_DIR", str(isolated_chroma))
     monkeypatch.setattr(ws_mod.workspace_service, "_get_workspace_dir", lambda _ws: str(ws_dir))
     monkeypatch.setattr(ws_mod.workspace_service, "get_workspace", lambda _ws: {"folders": [str(src)], "files": []})
+    monkeypatch.setattr(indexer_mod, "workspace_service", ws_mod.workspace_service)
 
     idx = indexer_mod.Indexer()
     idx.index_workspace(ws)
@@ -104,6 +107,7 @@ def test_llm_model_resolution_order(monkeypatch: pytest.MonkeyPatch):
     import services.workspace_service as ws_mod
 
     monkeypatch.setattr(ws_mod.workspace_service, "get_workspace", lambda _ws: {"model": "ws-model"})
+    monkeypatch.setattr(llm_mod, "workspace_service", ws_mod.workspace_service)
     client = llm_mod.LLMClient(base_url="http://localhost:11434")
     client.active_model_id = "global-model"
 
@@ -112,10 +116,12 @@ def test_llm_model_resolution_order(monkeypatch: pytest.MonkeyPatch):
 
     # global wins when no workspace model
     monkeypatch.setattr(ws_mod.workspace_service, "get_workspace", lambda _ws: {})
+    monkeypatch.setattr(llm_mod, "workspace_service", ws_mod.workspace_service)
     assert client.resolve_model("ws") == "global-model"
 
     # default from Ollama
     monkeypatch.setattr(ws_mod.workspace_service, "get_workspace", lambda _ws: {})
+    monkeypatch.setattr(llm_mod, "workspace_service", ws_mod.workspace_service)
     client.active_model_id = None
     monkeypatch.setattr(client, "get_models_config", lambda: {"default": "default-model", "models": []})
     assert client.resolve_model("ws") == "default-model"
