@@ -100,6 +100,29 @@ npx tsc -p tsconfig.app.json --noEmit --incremental false
 npm run build
 ```
 
+## Distribution and unified execution
+
+Build distributables with:
+
+```bash
+python scripts/build_dist.py --target all --version 1.0.0
+```
+
+This produces `dist/privatecopilot-<version>-windows.zip`, `dist/privatecopilot-<version>-linux.tar.gz` and `dist/privatecopilot-<version>-macos.tar.gz`.
+
+Each package includes `launch.py`, `start.bat`/`start.sh`, backend code, `frontend_dist/`, `workspaces/.gitkeep`, `LICENSE` and `README.md`. Run `python launch.py` (or `start.bat`/`start.sh`) to create a local venv, install dependencies and start the app at `http://127.0.0.1:8000`.
+
+## CI/CD
+
+- GitHub Actions: `.github/workflows/ci-release.yml`
+- Gitea Actions: `.gitea/workflows/ci-release.yml`
+
+Both run backend (ruff + pytest) and frontend (test, lint, tsc, build) checks, package distributables, and (GitHub only) create a release on `v*` tags.
+
+## License
+
+This project is licensed under the MIT License. See `LICENSE`.
+
 ## Limitations and current security scope
 
 - Intended for **local, single-user** use on `127.0.0.1`. **No authentication or authorization** is implemented.
