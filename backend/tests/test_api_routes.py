@@ -63,3 +63,75 @@ def test_git_apply_path_traversal(client: TestClient, tmp_path: Path):
         },
     )
     assert res.status_code in (400, 403)
+
+
+def test_health(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    import requests
+
+    monkeypatch.setattr(requests, "get", lambda *a, **k: type("R", (), {"status_code": 200})())
+    res = client.get("/health")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "ok"
+    assert "ollama" in data
+    assert "dependencies" in data
+
+    def raise_conn(*a, **k):
+        raise requests.ConnectionError("down")
+
+    monkeypatch.setattr(requests, "get", raise_conn)
+    res2 = client.get("/health")
+    assert res2.status_code == 200
+    assert res2.json()["ollama"] is False
+
+
+def test_model_and_persistence(client: TestClient):
+    client.post("/workspace/create", json={"name": "m"})
+
+    r2 = client.post("/model/set", json={"model_id": "mymodel"})
+    assert r2.status_code == 200
+
+    r3 = client.get("/model/current")
+    assert r3.status_code == 200
+
+    # state persists in tmp workspaces dir
+    import services.workspace_service as ws_mod
+
+    state = ws_mod.workspace_service.get_app_state()
+    assert state.get("active_model_id") == "mymodel"
+
+
+def test_fs_list(client: TestClient, tmp_path: Path):
+    d = tmp_path / "dir"
+    d.mkdir()
+    (d / "a.txt").write_text("hi", encoding="utf-8")
+
+    res = client.get(f"/fs/list?path={d}")
+    assert res.status_code == 200
+    assert any(item["name"] == "a.txt" for item in res.json()["items"])
+
+    res2 = client.get("/fs/list?path=/nonexistent/path/xyz")
+    assert res2.status_code == 404
+
+
+def test_chat_stream(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    # Create workspace with a folder
+    r = client.post("/workspace/create", json={"name": "c"})
+    ws = r.json()
+    import tempfile
+
+    d = Path(tempfile.mkdtemp())
+    client.post("/workspace/add-folder", json={"workspace_id": ws["id"], "folder_path": str(d)})
+
+    # Mock llm_client.generate_stream
+    import core.llm as llm_mod
+
+    def fake_stream(_ws, _q):
+        yield "data: {\"response\": \"hi\", \"done\": false}\n\n"
+        yield "data: {\"response\": \"\", \"done\": true}\n\n"
+
+    monkeypatch.setattr(llm_mod.llm_client, "generate_stream", fake_stream)
+
+    res = client.post("/chat/stream", json={"workspace_id": ws["id"], "query": "hello"})
+    assert res.status_code == 200
+    assert "hi" in res.text
