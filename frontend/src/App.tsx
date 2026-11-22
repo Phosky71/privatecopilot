@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import SettingsModal from './components/SettingsModal'
 import FileBrowserModal from './components/FileBrowserModal'
 import ChatMessage, { type Message } from './components/ChatMessage'
@@ -8,7 +8,9 @@ import {
   type ModelInfo,
   type ModelsResponse,
   type GitStatus,
+  type GitRepoStatus,
   type GitInitPolicy,
+  type IndexProgress,
 } from './types'
 
 function App() {
@@ -23,6 +25,8 @@ function App() {
   const [browserMode, setBrowserMode] = useState<'open-workspace' | 'folder' | 'file' | null>(null)
   const [gitStatus, setGitStatus] = useState<GitStatus | null>(null)
   const [gitInitPolicy, setGitInitPolicy] = useState<GitInitPolicy>('ask')
+  const [indexProgress, setIndexProgress] = useState<IndexProgress | null>(null)
+  const eventSourceRef = useRef<EventSource | null>(null)
 
   const fetchGitStatus = useCallback(async () => {
     if (!activeWorkspace) return
@@ -71,7 +75,7 @@ function App() {
     }
   }
 
-  const handleInitializeGit = async () => {
+  const handleInitializeGit = async (repoPath?: string) => {
     if (!activeWorkspace) return
     if (gitInitPolicy === 'ask' && !confirm('Initialize a Git repository in this folder?')) {
       return
@@ -80,7 +84,7 @@ function App() {
       const res = await fetch(`${API_URL}/git/init`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workspace_id: activeWorkspace.id }),
+        body: JSON.stringify({ workspace_id: activeWorkspace.id, repo_path: repoPath }),
       })
       if (!res.ok) {
         console.error('Failed to initialize git', res.status)
@@ -120,6 +124,7 @@ function App() {
   const handleWorkspaceSwitch = useCallback(async (ws: Workspace) => {
     setActiveWorkspace(ws)
     setMessages([])
+    setIndexProgress(null)
     try {
       const res = await fetch(`${API_URL}/workspace/switch`, {
         method: 'POST',
@@ -133,6 +138,31 @@ function App() {
       const data = await res.json()
       const switched = data.active_workspace as Workspace
       setActiveWorkspace(switched)
+      // Load chat history
+      try {
+        const hRes = await fetch(`${API_URL}/chat/history?workspace_id=${switched.id}`)
+        if (hRes.ok) {
+          const hData = await hRes.json()
+          const msgs: Message[] = (hData.messages || []).map((m: { role: string; content: string }) => ({
+            role: m.role,
+            content: m.content,
+            status: 'done',
+          }))
+          setMessages(msgs)
+        }
+      } catch (err: unknown) {
+        console.error(err)
+      }
+      // Restore index progress
+      try {
+        const pRes = await fetch(`${API_URL}/index/status?workspace_id=${switched.id}`)
+        if (pRes.ok) {
+          const pData: IndexProgress = await pRes.json()
+          setIndexProgress(pData)
+        }
+      } catch (err: unknown) {
+        console.error(err)
+      }
       const wsModel = availableModels.find((m: ModelInfo) => m.model === switched.model)
       if (wsModel) {
         setSelectedModelId(wsModel.id)
@@ -210,23 +240,54 @@ function App() {
 
   const handleIndexWorkspace = async () => {
     if (!activeWorkspace) return
+    // Close previous stream
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close()
+      eventSourceRef.current = null
+    }
     setIsIndexing(true)
     try {
-      const res = await fetch(`${API_URL}/index`, {
+      const res = await fetch(`${API_URL}/index/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ workspace_id: activeWorkspace.id }),
       })
       if (!res.ok) {
-        console.error('Failed to index workspace', res.status)
+        console.error('Failed to start indexing', res.status)
+        setIsIndexing(false)
         return
       }
-      alert('Indexing complete!')
+      const snapshot: IndexProgress = await res.json()
+      setIndexProgress(snapshot)
+
+      const es = new EventSource(`${API_URL}/index/stream?workspace_id=${activeWorkspace.id}`)
+      eventSourceRef.current = es
+      es.onmessage = (event) => {
+        try {
+          const data: IndexProgress = JSON.parse(event.data)
+          setIndexProgress(data)
+          if (data.status === 'completed' || data.status === 'error') {
+            es.close()
+            eventSourceRef.current = null
+            setIsIndexing(false)
+          }
+        } catch (err: unknown) {
+          console.error(err)
+        }
+      }
+      es.onerror = () => {
+        es.close()
+        eventSourceRef.current = null
+        setIsIndexing(false)
+      }
     } catch (err: unknown) {
       console.error(err)
-    } finally {
       setIsIndexing(false)
     }
+  }
+
+  const handleCloseIndexProgress = () => {
+    setIndexProgress(null)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -241,10 +302,14 @@ function App() {
     setMessages(prev => [...prev, aiMessage])
 
     try {
+      const history = messages
+        .filter(m => m.status !== 'thinking' && m.content && !m.content.startsWith('Error:'))
+        .map(m => ({ role: m.role, content: m.content }))
+
       const response = await fetch(`${API_URL}/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workspace_id: activeWorkspace.id, query: userMessage.content }),
+        body: JSON.stringify({ workspace_id: activeWorkspace.id, query: userMessage.content, history }),
       })
 
       if (!response.ok || !response.body) throw new Error('No response body')
@@ -377,6 +442,20 @@ function App() {
     }
   }
 
+  const handleClearChat = async () => {
+    if (!activeWorkspace) return
+    try {
+      const res = await fetch(`${API_URL}/chat/history?workspace_id=${activeWorkspace.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        console.error('Failed to clear chat', res.status)
+        return
+      }
+      setMessages([])
+    } catch (err: unknown) {
+      console.error(err)
+    }
+  }
+
   const handleDeleteWorkspace = async () => {
     if (!activeWorkspace) return
     try {
@@ -439,36 +518,33 @@ function App() {
           <h2 className="text-xs uppercase text-gray-400 font-semibold mb-3">Git Status</h2>
           {gitStatus ? (
             <div className="space-y-2 text-sm bg-gray-900 p-3 rounded-md border border-gray-700">
-              {gitStatus.initialized === false ? (
-                <>
-                  <div className="text-gray-400 text-xs">Not a Git repository</div>
-                  {gitInitPolicy !== 'never' && (
-                    <button
-                      onClick={() => void handleInitializeGit()}
-                      className="mt-2 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-medium"
-                    >
-                      Initialize Git
-                    </button>
+              {(gitStatus.repositories && gitStatus.repositories.length > 0 ? gitStatus.repositories : [gitStatus as unknown as GitRepoStatus]).map((repo, idx) => (
+                <div key={idx} className="border-b border-gray-800 pb-2 last:border-0">
+                  <div className="text-xs font-bold text-gray-300 truncate">{repo.name}</div>
+                  {repo.initialized === false ? (
+                    <>
+                      <div className="text-gray-400 text-xs">Not a Git repository</div>
+                      {gitInitPolicy !== 'never' && (
+                        <button
+                          onClick={() => void handleInitializeGit(repo.repo_path)}
+                          className="mt-1 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-medium"
+                        >
+                          Initialize Git
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2 text-blue-400">
+                        <span className="font-mono text-xs font-bold truncate">{repo.branch || 'N/A'}</span>
+                      </div>
+                      <div className="text-gray-400 text-xs mt-1">
+                        Pending Changes: {repo.pending_changes?.length || 0}
+                      </div>
+                    </>
                   )}
-                </>
-              ) : (
-                <>
-                  <div className="flex items-center gap-2 text-blue-400">
-                    <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
-                    </svg>
-                    <span className="font-mono text-xs font-bold truncate">{gitStatus.branch || 'N/A'}</span>
-                  </div>
-                  <div className="text-gray-400 text-xs mt-2">
-                    Pending Changes: {gitStatus.pending_changes?.length || 0}
-                  </div>
-                  {gitStatus.pending_changes && gitStatus.pending_changes.length > 0 && (
-                    <ul className="text-xs font-mono text-yellow-400 mt-1 max-h-24 overflow-y-auto">
-                      {gitStatus.pending_changes.map((c: string, i: number) => <li key={i} className="truncate">{c}</li>)}
-                    </ul>
-                  )}
-                </>
-              )}
+                </div>
+              ))}
             </div>
           ) : (
             <p className="text-sm text-gray-500 italic">No valid workspace or repo loaded.</p>
@@ -514,6 +590,14 @@ function App() {
                 {isIndexing ? 'Indexing...' : 'Index Workspace'}
               </button>
             )}
+            {activeWorkspace && messages.length > 0 && (
+              <button
+                onClick={() => void handleClearChat()}
+                className="px-4 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-md text-sm font-medium transition-colors"
+              >
+                Clear Chat
+              </button>
+            )}
             <button
               onClick={() => setShowSettings(true)}
               className="px-4 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-md text-sm font-medium transition-colors"
@@ -522,6 +606,27 @@ function App() {
             </button>
           </div>
         </div>
+
+        {indexProgress && (
+          <div className="px-6 py-3 bg-gray-800 border-b border-gray-700">
+            <div className="flex items-center justify-between text-xs text-gray-300 mb-1">
+              <span>{indexProgress.phase} — {indexProgress.processed_files}/{indexProgress.total_files} ({indexProgress.percent}%)</span>
+              <button onClick={handleCloseIndexProgress} className="text-gray-400 hover:text-white">✕</button>
+            </div>
+            <div className="w-full bg-gray-700 rounded h-2 overflow-hidden">
+              <div className="bg-blue-600 h-2" style={{ width: `${indexProgress.percent}%` }} />
+            </div>
+            {indexProgress.current_file && (
+              <div className="text-xs text-gray-500 mt-1 truncate">{indexProgress.current_file}</div>
+            )}
+            {indexProgress.status === 'completed' && (
+              <div className="text-xs text-green-400 mt-1">Indexed {indexProgress.indexed_files}, skipped {indexProgress.skipped_files}, failed {indexProgress.failed_files}, removed {indexProgress.removed_files}</div>
+            )}
+            {indexProgress.status === 'error' && (
+              <div className="text-xs text-red-400 mt-1">{indexProgress.error}</div>
+            )}
+          </div>
+        )}
 
         <div className="flex-1 p-6 overflow-y-auto space-y-6">
           {messages.length === 0 ? (
@@ -540,6 +645,7 @@ function App() {
                 message={msg}
                 workspaceId={activeWorkspace?.id || ''}
                 API_URL={API_URL}
+                repositories={gitStatus?.repositories}
               />
             ))
           )}

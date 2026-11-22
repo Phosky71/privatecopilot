@@ -5,15 +5,18 @@ import { type Message } from '../types';
 
 export type { Message };
 
+import { type GitRepoStatus } from '../types';
+
 interface ChatMessageProps {
   message: Message;
   workspaceId: string;
   API_URL: string;
+  repositories?: GitRepoStatus[];
 }
 
 import { parseContent } from '../utils/editParser';
 
-export default function ChatMessage({ message, workspaceId, API_URL }: ChatMessageProps) {
+export default function ChatMessage({ message, workspaceId, API_URL, repositories }: ChatMessageProps) {
   const isUser = message.role === 'user';
   const parts = parseContent(message.content);
   
@@ -48,6 +51,7 @@ export default function ChatMessage({ message, workspaceId, API_URL }: ChatMessa
                     original={part.original!}
                     replacement={part.replacement!}
                     API_URL={API_URL}
+                     repositories={repositories}
                   />
                 );
               }

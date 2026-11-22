@@ -1,18 +1,23 @@
 import { useState } from 'react';
 import ReactDiffViewer from 'react-diff-viewer-continued';
 
+import { type GitRepoStatus } from '../types';
+
 interface DiffViewerProps {
   workspaceId: string;
   file: string;
   original: string;
   replacement: string;
   API_URL: string;
+  repositories?: GitRepoStatus[];
 }
 
-export default function DiffViewerComponent({ workspaceId, file, original, replacement, API_URL }: DiffViewerProps) {
+export default function DiffViewerComponent({ workspaceId, file, original, replacement, API_URL, repositories }: DiffViewerProps) {
   const [status, setStatus] = useState<'pending' | 'applied' | 'rejected'>('pending');
   const [error, setError] = useState<string | null>(null);
   const [confirmingInit, setConfirmingInit] = useState(false);
+  const [repoPath, setRepoPath] = useState<string | undefined>(undefined);
+  const [resultInfo, setResultInfo] = useState<string | null>(null);
 
   const handleApply = async (confirmGitInit = false) => {
     try {
@@ -24,7 +29,8 @@ export default function DiffViewerComponent({ workspaceId, file, original, repla
           file_path: file,
           original: original,
           replacement: replacement,
-          confirm_git_init: confirmGitInit
+          confirm_git_init: confirmGitInit,
+          repo_path: repoPath
         })
       });
       const data = await res.json();
@@ -35,6 +41,9 @@ export default function DiffViewerComponent({ workspaceId, file, original, repla
       if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Failed to apply edit');
       setConfirmingInit(false);
       setStatus('applied');
+      if (data.branch) {
+        setResultInfo(`${data.branch}${data.repo_path ? ` (${data.repo_path})` : ''}`);
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -45,7 +54,20 @@ export default function DiffViewerComponent({ workspaceId, file, original, repla
       <div className="flex justify-between items-center px-4 py-3 bg-gray-800 border-b border-gray-700">
         <span className="font-mono text-sm text-gray-300">📝 {file}</span>
         {status === 'pending' && (
-          <div className="space-x-3">
+          <div className="space-y-2">
+            {repositories && repositories.length > 1 && (
+              <select
+                value={repoPath || ''}
+                onChange={e => setRepoPath(e.target.value || undefined)}
+                className="bg-gray-800 text-xs text-gray-200 border border-gray-700 rounded px-2 py-1"
+              >
+                <option value="">Auto-detect</option>
+                {repositories.map(r => (
+                  <option key={r.repo_path} value={r.repo_path}>{r.name}</option>
+                ))}
+              </select>
+            )}
+            <div className="space-x-3">
             {confirmingInit ? (
               <>
                 <span className="text-xs text-yellow-400 mr-2">This folder is not a Git repository.</span>
@@ -78,9 +100,14 @@ export default function DiffViewerComponent({ workspaceId, file, original, repla
                 </button>
               </>
             )}
+            </div>
           </div>
         )}
-        {status === 'applied' && <span className="px-3 py-1 bg-green-900/30 text-green-400 border border-green-800 rounded-md text-xs font-bold tracking-wider">APPLIED ✓</span>}
+        {status === 'applied' && (
+          <span className="px-3 py-1 bg-green-900/30 text-green-400 border border-green-800 rounded-md text-xs font-bold tracking-wider">
+            APPLIED ✓ {resultInfo ? `(${resultInfo})` : ''}
+          </span>
+        )}
         {status === 'rejected' && <span className="px-3 py-1 bg-red-900/30 text-red-400 border border-red-800 rounded-md text-xs font-bold tracking-wider">REJECTED ✕</span>}
       </div>
       
