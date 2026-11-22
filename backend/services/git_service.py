@@ -52,34 +52,60 @@ class GitService:
 
     def get_status(self, workspace_id: str):
         try:
-            repo_path = self._get_repo_path(workspace_id)
-            git_dir = os.path.join(repo_path, ".git")
-            if not os.path.exists(git_dir):
-                return {
-                    "initialized": False,
-                    "branch": None,
-                    "pending_changes": [],
-                    "repo_path": repo_path,
-                }
+            roots = self._get_workspace_repos(workspace_id)
+            repositories = []
+            for root in roots:
+                git_dir = root / ".git"
+                if not git_dir.exists():
+                    repositories.append({
+                        "repo_path": str(root),
+                        "name": root.name,
+                        "initialized": False,
+                        "branch": None,
+                        "pending_changes": [],
+                    })
+                    continue
+                try:
+                    branch = self._run_cmd(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=str(root))
+                    status_output = self._run_cmd(["git", "status", "--porcelain"], cwd=str(root))
+                    pending_changes: list[str] = []
+                    if status_output:
+                        for line in status_output.split("\n"):
+                            if line.strip():
+                                pending_changes.append(line.strip())
+                    repositories.append({
+                        "repo_path": str(root),
+                        "name": root.name,
+                        "initialized": True,
+                        "branch": branch,
+                        "pending_changes": pending_changes,
+                    })
+                except Exception as e:  # noqa: BLE001
+                    repositories.append({
+                        "repo_path": str(root),
+                        "name": root.name,
+                        "initialized": False,
+                        "branch": None,
+                        "pending_changes": [],
+                        "error": str(e),
+                    })
 
-            branch = self._run_cmd(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo_path)
-            status_output = self._run_cmd(["git", "status", "--porcelain"], cwd=repo_path)
-
-            pending_changes: list[str] = []
-            if status_output:
-                for line in status_output.split("\n"):
-                    if line.strip():
-                        pending_changes.append(line.strip())
-
+            first = repositories[0] if repositories else {
+                "initialized": False,
+                "branch": None,
+                "pending_changes": [],
+                "repo_path": None,
+            }
             return {
-                "initialized": True,
-                "branch": branch,
-                "pending_changes": pending_changes,
-                "repo_path": repo_path,
+                "initialized": first.get("initialized", False),
+                "branch": first.get("branch"),
+                "pending_changes": first.get("pending_changes", []),
+                "repo_path": first.get("repo_path"),
+                "repositories": repositories,
             }
         except Exception as e:  # noqa: BLE001
             logger.warning("Git status failed: %s", e)
-            return {"initialized": False, "branch": None, "pending_changes": [], "error": str(e), "repo_path": repo_path}
+            return {"initialized": False, "branch": None, "pending_changes": [], "error": str(e)}
 
     def _get_workspace_repos(self, workspace_id: str) -> list[Path]:
         ws = workspace_service.get_workspace(workspace_id)
