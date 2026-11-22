@@ -13,6 +13,9 @@ PrivateCopilot is a **local, single-user AI coding assistant**. It provides isol
 - **HITL file editing**: assistant emits `<edit file="...">` blocks; the UI shows a diff and the user accepts/rejects. Accepted edits create a `feature/ai-edit-*` branch, apply the change (preserving CRLF/LF) and commit.
 - **Git status panel**: branch and pending changes for the first folder of the active workspace; `/git/status` is read-only and reports `initialized`.
 - **Configurable Git init policy**: `ask` (default), `auto`, `never` via `/git/config` and `/git/init`.
+- **Multi-turn chat**: conversation history persisted per workspace (`GET/DELETE /chat/history`), sent to Ollama `/api/chat`.
+- **Multi-repository Git**: workspaces with multiple folders report `repositories` in `/git/status`; edits route to the correct repo.
+- **Live indexing progress**: `POST /index/start`, `GET /index/status`, `GET /index/stream` (SSE) with per-file progress.
 - **Health endpoint**: `GET /health` reports API status, Ollama availability and core dependencies.
 
 ## Requirements
