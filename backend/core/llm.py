@@ -113,6 +113,10 @@ class LLMClient:
 
         system_prompt = (
             "You are a local AI coding assistant. You have access to the user's workspace files. "
+            "You MUST answer ONLY using the provided workspace context fragments. "
+            "It is strictly forbidden to invent file paths, symbols, hex colors, or code that are not present in the context. "
+            "If the context states the workspace is not indexed or has no relevant matches, say so clearly and tell the user to run \"Index Workspace\". "
+            "Only emit <edit> tags when the user asks to modify or create a real workspace file; never emit fictitious examples like path/to/file.ext. "
             "Use the provided context to answer the user's questions about their codebase. "
             "IMPORTANT: If you want to propose a file modification, you MUST use the following exact XML format:\n"
             "<edit file=\"path/to/file.ext\">\n"
@@ -148,6 +152,20 @@ class LLMClient:
         user_content = query
         if context_str:
             user_content = f"Context:\n{context_str}\n\nUser Question:\n{query}"
+        else:
+            chunk_count = rag_service.get_collection_count(workspace_id)
+            if chunk_count == 0:
+                user_content = (
+                    "Context: [WORKSPACE NOT INDEXED — 0 indexed chunks in vector database. "
+                    "Do NOT invent files, colors, or code. Tell the user clearly to run \"Index Workspace\" first.]\n\n"
+                    f"User Question:\n{query}"
+                )
+            else:
+                user_content = (
+                    "Context: [No relevant chunks found in indexed workspace files for this query. "
+                    "Do NOT invent non-existent files.]\n\n"
+                    f"User Question:\n{query}"
+                )
 
         messages.append({"role": "user", "content": user_content})
         return messages

@@ -18,11 +18,11 @@ import { parseContent } from '../utils/editParser';
 
 export default function ChatMessage({ message, workspaceId, API_URL, repositories }: ChatMessageProps) {
   const isUser = message.role === 'user';
-  const parts = parseContent(message.content);
+  const parts = parseContent(message.content).filter(p => p.type !== 'text' || p.content.trim() !== '');
   
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div className={`w-full rounded-2xl px-5 py-3.5 leading-relaxed shadow-sm ${
+      <div className={`w-full rounded-2xl px-5 py-3.5 leading-relaxed shadow-sm min-w-0 overflow-hidden ${
         isUser 
           ? 'bg-blue-600 text-white rounded-br-none ml-auto w-auto max-w-3xl' 
           : 'bg-gray-800 border border-gray-700 text-gray-200 rounded-bl-none max-w-5xl'
@@ -34,7 +34,7 @@ export default function ChatMessage({ message, workspaceId, API_URL, repositorie
             <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
           </div>
         ) : (
-          <div className={`prose ${isUser ? 'prose-invert text-white' : 'prose-invert'} max-w-none prose-p:my-1 prose-pre:bg-gray-900 prose-pre:border prose-pre:border-gray-700`}>
+          <div className={`prose ${isUser ? 'prose-invert text-white' : 'prose-invert'} max-w-none prose-p:my-1 prose-pre:bg-gray-900 prose-pre:border prose-pre:border-gray-700 prose-pre:max-w-full prose-pre:overflow-x-auto`}>
             {parts.map((part, i) => {
               if (part.type === 'text') {
                 return (

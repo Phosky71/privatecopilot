@@ -9,6 +9,13 @@ class RAGService:
     def __init__(self):
         pass
 
+    def get_collection_count(self, workspace_id: str) -> int:
+        try:
+            collection = chroma_manager.get_collection(workspace_id)
+            return int(collection.count())
+        except Exception:  # noqa: BLE001
+            return 0
+
     def search(self, workspace_id: str, query: str, top_k: int = 5) -> list[dict[str, Any]]:
         collection = chroma_manager.get_collection(workspace_id)
 

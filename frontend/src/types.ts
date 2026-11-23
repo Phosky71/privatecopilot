@@ -89,6 +89,8 @@ export interface IndexProgress {
   current_file: string | null;
   percent: number;
   error: string | null;
+  known_indexed_files?: number;
+  has_indexed_data?: boolean;
 }
 
 export interface FsEntry {

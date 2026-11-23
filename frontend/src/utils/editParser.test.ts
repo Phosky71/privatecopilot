@@ -56,3 +56,33 @@ test('malformed edit without closing tag is treated as text', () => {
   const parts = parseContent(input);
   assert.deepEqual(parts, [{ type: 'text', content: input }]);
 });
+
+test('edit inside fenced code block is not parsed', () => {
+  const input = '```xml\n<edit file="a.txt"><original>old</original><replacement>new</replacement></edit>\n```';
+  const parts = parseContent(input);
+  assert.ok(!parts.some(p => p.type === 'edit'));
+});
+
+test('template placeholder edit is ignored', () => {
+  const input = '<edit file="path/to/file.ext"><original>exact old code to replace</original><replacement>new code</replacement></edit>';
+  const parts = parseContent(input);
+  assert.ok(!parts.some(p => p.type === 'edit'));
+});
+
+test('real edit outside code block is parsed', () => {
+  const input = 'text\n<edit file="a.txt"><original>old</original><replacement>new</replacement></edit>';
+  const parts = parseContent(input);
+  assert.ok(parts.some(p => p.type === 'edit'));
+});
+
+test('edit inside fenced code block is not parsed', () => {
+  const input = '```xml\n<edit file="a.txt"><original>old</original><replacement>new</replacement></edit>\n```';
+  const parts = parseContent(input);
+  assert.ok(!parts.some(p => p.type === 'edit'));
+});
+
+test('template placeholder edit is ignored', () => {
+  const input = '<edit file="path/to/file.ext"><original>exact old code to replace</original><replacement>new code</replacement></edit>';
+  const parts = parseContent(input);
+  assert.ok(!parts.some(p => p.type === 'edit'));
+});

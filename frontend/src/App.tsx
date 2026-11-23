@@ -240,6 +240,18 @@ function App() {
       const ws: Workspace = await res.json()
       await fetchWorkspaces()
       await handleWorkspaceSwitch(ws)
+      try {
+        const pRes = await fetch(`${API_URL}/index/status?workspace_id=${ws.id}`)
+        if (pRes.ok) {
+          const pData: IndexProgress = await pRes.json()
+          setIndexProgress(pData)
+          if (!pData.has_indexed_data && pData.status !== 'running') {
+            void handleIndexWorkspace()
+          }
+        }
+      } catch (err: unknown) {
+        console.error(err)
+      }
     } catch (err: unknown) {
       console.error(err)
     }
@@ -597,6 +609,16 @@ function App() {
             >
               ↻
             </button>
+            {activeWorkspace && indexProgress?.has_indexed_data && (
+              <span className="px-2 py-1 bg-gray-700 text-gray-300 rounded text-xs">
+                {indexProgress.known_indexed_files} indexed
+              </span>
+            )}
+            {activeWorkspace && indexProgress && indexProgress.status !== 'running' && !indexProgress.has_indexed_data && (
+              <span className="px-2 py-1 bg-amber-900/40 text-amber-300 rounded text-xs">
+                Not indexed
+              </span>
+            )}
             {activeWorkspace && (
               <button
                 onClick={() => void handleIndexWorkspace()}
@@ -623,7 +645,7 @@ function App() {
           </div>
         </div>
 
-        {indexProgress && (
+        {indexProgress && indexProgress.status !== 'idle' && (
           <div className="px-6 py-3 bg-gray-800 border-b border-gray-700">
             <div className="flex items-center justify-between text-xs text-gray-300 mb-1">
               <span>{indexProgress.phase} — {indexProgress.processed_files}/{indexProgress.total_files} ({indexProgress.percent}%)</span>
@@ -653,6 +675,14 @@ function App() {
                 </svg>
               </div>
               <p className="text-lg font-medium">Ask a question about your codebase</p>
+              {activeWorkspace && indexProgress && indexProgress.status !== 'running' && !indexProgress.has_indexed_data && (
+                <button
+                  onClick={() => void handleIndexWorkspace()}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-md text-sm font-medium"
+                >
+                  Index Now
+                </button>
+              )}
             </div>
           ) : (
             messages.map((msg, i) => (

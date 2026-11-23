@@ -41,6 +41,8 @@ class Indexer:
             "current_file": None,
             "percent": 0.0,
             "error": None,
+            "known_indexed_files": 0,
+            "has_indexed_data": False,
         }
 
     def _get_metadata_path(self, workspace_id: str) -> str:
@@ -63,7 +65,14 @@ class Indexer:
         with self._lock:
             if workspace_id not in self._progress:
                 self._progress[workspace_id] = self._default_progress(workspace_id)
-            return dict(self._progress[workspace_id])
+            snap = dict(self._progress[workspace_id])
+            try:
+                known = len(self._load_metadata(workspace_id))
+            except Exception:  # noqa: BLE001
+                known = 0
+            snap["known_indexed_files"] = known
+            snap["has_indexed_data"] = known > 0
+            return snap
 
     def _set_progress(self, workspace_id: str, **updates):
         with self._condition:
