@@ -1,5 +1,9 @@
 # PrivateCopilot
 
+## Project Status — Functional MVP (`v1.0.0`)
+
+This is the **first usable version** of PrivateCopilot. Validated flows include the full automated test suite (59 backend tests, 13 frontend tests, lint, typecheck and build) and a real live run against LM Studio with a real workspace (indexing progress, RAG retrieval and multi-turn chat). See [`CHANGELOG.md`](./CHANGELOG.md) and the GitHub Releases for distributables.
+
 PrivateCopilot is a **local, single-user AI coding assistant**. It provides isolated workspaces over local folders, a from-scratch RAG system built on ChromaDB and SentenceTransformers (`all-MiniLM-L6-v2`), and a streaming chat interface powered by a local Ollama model. The assistant can propose file edits as `<edit>` blocks that are reviewed through a diff viewer and applied via Git branches/commits.
 
 ## Implemented features
