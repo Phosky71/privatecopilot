@@ -6,6 +6,7 @@ from core import embeddings as emb_mod
 from core import indexer as indexer_mod
 from core import llm as llm_mod
 from core import rag as rag_mod
+from core.llm import LLMClient
 from core.rag import RAGService
 
 
@@ -101,6 +102,44 @@ def test_llm_ollama_base_url_env(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("OLLAMA_BASE_URL", "http://example:11434")
     client = llm_mod.LLMClient()
     assert client.base_url == "http://example:11434"
+
+
+def test_rag_get_collection_count(isolated_chroma: Path):
+    ws = "ws-count"
+    (isolated_chroma / ws).mkdir()
+    coll = cm_mod.chroma_manager.get_collection(ws)
+    assert rag_mod.rag_service.get_collection_count(ws) == 0
+    coll.add(ids=["1"], embeddings=[[0.1, 0.2, 0.3]], documents=["x"], metadatas=[{"source": "a"}])
+    assert rag_mod.rag_service.get_collection_count(ws) == 1
+
+
+def test_build_messages_unindexed_warning(monkeypatch: pytest.MonkeyPatch):
+    import services.workspace_service as ws_mod
+
+    monkeypatch.setattr(ws_mod.workspace_service, "get_workspace", lambda _ws: {"folders": [], "files": []})
+    monkeypatch.setattr(llm_mod, "workspace_service", ws_mod.workspace_service)
+    monkeypatch.setattr("core.rag.rag_service.search", lambda _ws, q, top_k=5: [])
+    monkeypatch.setattr("core.rag.rag_service.get_collection_count", lambda _ws: 0)
+
+    client = LLMClient(base_url="http://localhost:11434")
+    msgs = client.build_messages("ws", "colors?")
+    user = msgs[-1]["content"]
+    assert "[WORKSPACE NOT INDEXED" in user
+    assert "strictly forbidden to invent" in msgs[0]["content"]
+
+
+def test_build_messages_no_relevant_chunks(monkeypatch: pytest.MonkeyPatch):
+    import services.workspace_service as ws_mod
+
+    monkeypatch.setattr(ws_mod.workspace_service, "get_workspace", lambda _ws: {"folders": [], "files": []})
+    monkeypatch.setattr(llm_mod, "workspace_service", ws_mod.workspace_service)
+    monkeypatch.setattr("core.rag.rag_service.search", lambda _ws, q, top_k=5: [])
+    monkeypatch.setattr("core.rag.rag_service.get_collection_count", lambda _ws: 5)
+
+    client = LLMClient(base_url="http://localhost:11434")
+    msgs = client.build_messages("ws", "colors?")
+    user = msgs[-1]["content"]
+    assert "[No relevant chunks found" in user
 
 
 def test_llm_model_resolution_order(monkeypatch: pytest.MonkeyPatch):

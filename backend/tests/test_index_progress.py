@@ -44,6 +44,11 @@ def test_progress_callback_phases(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert last.get("percent") == 100.0
     assert last.get("indexed_files") == 2
 
+    snap = idx.get_progress("ws")
+    assert "known_indexed_files" in snap
+    assert "has_indexed_data" in snap
+    assert snap["has_indexed_data"] is True
+
 
 def test_index_start_dedup_and_stream(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     src = tmp_path / "src"
